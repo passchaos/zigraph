@@ -729,6 +729,7 @@ pub fn build(b: *std.Build) void {
         .{ .file = "examples/svg/07_heatmap.zig", .name = "svg_07_heatmap", .desc = "SVG gallery: 07 heatmap" },
         .{ .file = "examples/svg/08_variable_sizes.zig", .name = "svg_08_variable_sizes", .desc = "SVG gallery: 08 variable sizes" },
         .{ .file = "examples/svg/09_drag_and_pin.zig", .name = "svg_09_drag_and_pin", .desc = "SVG gallery: 09 drag and pin" },
+        .{ .file = "examples/svg/10_rank_constraints.zig", .name = "svg_10_rank_constraints", .desc = "SVG gallery: 10 rank constraints" },
     };
 
     const run_gallery_step = b.step("run-svg-gallery", "Run all SVG gallery examples");

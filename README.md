@@ -145,6 +145,25 @@ Output:
  [Link]
 ```
 
+## Rank Constraints
+
+Sugiyama layouts support Graphviz-style rank hints for keeping nodes on the
+same level or biasing them toward boundary levels:
+
+```zig
+var ir = try zigraph.layout(&graph, allocator, .{
+    .rank_constraints = &.{
+        .{ .kind = .same, .node_ids = &.{ 2, 3 } }, // share a level
+        .{ .kind = .min, .node_ids = &.{1} },       // prefer first level
+        .{ .kind = .max, .node_ids = &.{4} },       // prefer last level
+    },
+});
+```
+
+Supported kinds are `.same`, `.min`, `.max`, `.source`, and `.sink`.
+Edge direction still takes precedence, so constraints are applied as layout
+hints and then repaired to keep directed edges flowing downward.
+
 ## Edge Labels
 
 Annotate edges with descriptive text:
@@ -515,6 +534,7 @@ zig build run-svg_04_clusters      # Clusters
 zig build run-svg_05_dark_theme    # Dark theme
 zig build run-svg_06_interactive   # Interactive
 zig build run-svg_07_heatmap       # Heatmap
+zig build run-svg_10_rank_constraints # Rank constraints
 ```
 </details>
 

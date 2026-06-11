@@ -275,6 +275,26 @@ pub const Algorithm = union(enum) {
     fruchterman_reingold_fast: fdg.fruchterman_reingold.Config,
 };
 
+/// Rank constraint kind for Sugiyama layout.
+///
+/// Rank constraints are group-level layout hints:
+/// - `same`: keep the listed nodes on the same level when edge constraints allow it
+/// - `min`/`source`: bias the listed nodes toward the first level
+/// - `max`/`sink`: bias the listed nodes toward the last level
+pub const RankKind = enum {
+    same,
+    min,
+    max,
+    source,
+    sink,
+};
+
+/// A group of nodes with a shared rank constraint.
+pub const RankConstraint = struct {
+    kind: RankKind,
+    node_ids: []const usize,
+};
+
 /// Configuration for the layout algorithm.
 pub const LayoutConfig = struct {
     // Top-level algorithm
@@ -296,6 +316,8 @@ pub const LayoutConfig = struct {
     positioning: Positioning = .compact,
     /// Edge routing algorithm (default: direct)
     routing: Routing = .direct,
+    /// Rank constraints for Sugiyama layering.
+    rank_constraints: []const RankConstraint = &.{},
 
     // Tuning parameters
     /// Horizontal spacing between nodes
@@ -866,6 +888,17 @@ const dummy_key_stride: usize = 10000;
 fn validateForSugiyama(g: *const Graph, allocator: std.mem.Allocator, config: LayoutConfig) !void {
     if (config.skip_validation) return;
 
+    for (config.rank_constraints) |constraint| {
+        for (constraint.node_ids) |node_id| {
+            if (g.nodeIndex(node_id) == null) {
+                var detail_buf: [64]u8 = undefined;
+                const detail = std.fmt.bufPrint(&detail_buf, "rank constraint references node {d}", .{node_id}) catch "rank constraint references missing node";
+                errors.captureErrorFull(error.NodeNotFound, @src(), detail, &.{node_id});
+                return error.NodeNotFound;
+            }
+        }
+    }
+
     var validation_result = try g.validate(allocator);
     defer validation_result.deinit();
 
@@ -908,6 +941,151 @@ fn validateForSugiyama(g: *const Graph, allocator: std.mem.Allocator, config: La
             }
         },
         .ok => {},
+    }
+}
+
+fn isPinnedLevel(g: *const Graph, node_idx: usize) bool {
+    const node = g.nodeAt(node_idx) orelse return false;
+    const pin = node.pin orelse return false;
+    return pin.y != null;
+}
+
+fn recomputeMaxLevel(g: *const Graph, assignment: *layering.longest_path.LayerAssignment) void {
+    var new_max: usize = 0;
+    for (0..g.nodeCount()) |node_idx| {
+        new_max = @max(new_max, assignment.levels[node_idx]);
+    }
+    assignment.max_level = new_max;
+}
+
+fn compactLayerAssignment(g: *const Graph, assignment: *layering.longest_path.LayerAssignment, allocator: std.mem.Allocator) !void {
+    const node_count = g.nodeCount();
+    if (node_count == 0) {
+        assignment.max_level = 0;
+        return;
+    }
+
+    // Collect unique levels
+    const unique_buf = try allocator.alloc(usize, node_count);
+    defer allocator.free(unique_buf);
+    var unique_count: usize = 0;
+
+    for (0..node_count) |ni| {
+        const lev = assignment.levels[ni];
+        var found = false;
+        for (0..unique_count) |ui| {
+            if (unique_buf[ui] == lev) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            unique_buf[unique_count] = lev;
+            unique_count += 1;
+        }
+    }
+
+    // Sort unique levels (insertion sort — typically very few unique levels)
+    const unique_levels = unique_buf[0..unique_count];
+    for (1..unique_count) |i| {
+        const key = unique_levels[i];
+        var j: usize = i;
+        while (j > 0 and unique_levels[j - 1] > key) {
+            unique_levels[j] = unique_levels[j - 1];
+            j -= 1;
+        }
+        unique_levels[j] = key;
+    }
+
+    // Remap each node's level to its dense rank
+    for (0..node_count) |ni| {
+        const old_level = assignment.levels[ni];
+        for (unique_levels, 0..) |ul, rank| {
+            if (ul == old_level) {
+                assignment.levels[ni] = rank;
+                break;
+            }
+        }
+    }
+
+    assignment.max_level = if (unique_count > 0) unique_count - 1 else 0;
+}
+
+fn applyRankConstraints(
+    g: *const Graph,
+    assignment: *layering.longest_path.LayerAssignment,
+    constraints: []const RankConstraint,
+) void {
+    if (constraints.len == 0) return;
+
+    for (constraints) |constraint| {
+        switch (constraint.kind) {
+            .same => {
+                var target_level: usize = 0;
+                for (constraint.node_ids) |node_id| {
+                    const node_idx = g.nodeIndex(node_id) orelse continue;
+                    target_level = @max(target_level, assignment.levels[node_idx]);
+                }
+
+                for (constraint.node_ids) |node_id| {
+                    const node_idx = g.nodeIndex(node_id) orelse continue;
+                    if (isPinnedLevel(g, node_idx)) continue;
+                    assignment.levels[node_idx] = target_level;
+                }
+            },
+            .min, .source => {
+                for (constraint.node_ids) |node_id| {
+                    const node_idx = g.nodeIndex(node_id) orelse continue;
+                    if (isPinnedLevel(g, node_idx)) continue;
+                    assignment.levels[node_idx] = 0;
+                }
+            },
+            .max, .sink => {
+                const target_level = assignment.max_level;
+
+                for (constraint.node_ids) |node_id| {
+                    const node_idx = g.nodeIndex(node_id) orelse continue;
+                    if (isPinnedLevel(g, node_idx)) continue;
+                    assignment.levels[node_idx] = target_level;
+                }
+            },
+        }
+    }
+
+    recomputeMaxLevel(g, assignment);
+}
+
+fn repairTopologicalLevels(
+    g: *const Graph,
+    assignment: *layering.longest_path.LayerAssignment,
+    reversed_edges: ?[]const bool,
+) void {
+    // Ensure every edge u→v has level[u] < level[v].
+    // If a constraint caused a violation, push the child node down (cascading).
+    var changed = true;
+    var safety: usize = 0;
+    const max_iters = g.nodeCount() + 1;
+    while (changed and safety < max_iters) : (safety += 1) {
+        changed = false;
+        for (g.edges.items, 0..) |edge, edge_idx| {
+            // Respect reversed edges from cycle breaking
+            const is_reversed = if (reversed_edges) |re| re[edge_idx] else false;
+            const from_id = if (is_reversed) edge.to else edge.from;
+            const to_id = if (is_reversed) edge.from else edge.to;
+
+            const from_idx = g.nodeIndex(from_id) orelse continue;
+            const to_idx = g.nodeIndex(to_id) orelse continue;
+            if (from_idx == to_idx) continue;
+
+            // Skip if the child is pinned — don't override explicit user intent.
+            if (isPinnedLevel(g, to_idx)) continue;
+
+            if (assignment.levels[to_idx] <= assignment.levels[from_idx]) {
+                assignment.levels[to_idx] = assignment.levels[from_idx] + 1;
+                assignment.max_level = @max(assignment.max_level, assignment.levels[to_idx]);
+                changed = true;
+            }
+        }
     }
 }
 
@@ -1225,7 +1403,7 @@ fn layoutSugiyama(g: *const Graph, allocator: std.mem.Allocator, config: LayoutC
     };
     defer layer_assignment.deinit();
 
-    // Step 1a: Apply pin.y constraints and enforce subgraph contiguity,
+    // Step 1a: Apply pin.y/rank constraints and enforce subgraph contiguity,
     // then repair topological ordering so all edges still flow downward.
     {
         // Phase 1: Apply pin.y hints
@@ -1238,97 +1416,22 @@ fn layoutSugiyama(g: *const Graph, allocator: std.mem.Allocator, config: LayoutC
             }
         }
 
-        // Phase 1b: Enforce contiguous level spans for subgraph members.
+        // Phase 1b: Apply Graphviz-style rank constraints.
+        applyRankConstraints(g, &layer_assignment, config.rank_constraints);
+
+        // Phase 1c: Enforce contiguous level spans for subgraph members.
         if (g.hasSubgraphs()) {
             try subgraph_layout.enforceContiguousLevels(g, &layer_assignment, allocator);
         }
 
-        // Phase 2: Topological repair — ensure every edge u→v has level[u] < level[v].
-        // If a pin caused a violation, push the child node down (cascading).
-        // Uses fixed-point iteration; converges in O(depth) passes for DAGs.
-        var changed = true;
-        var safety: usize = 0;
-        const max_iters = g.nodeCount() + 1;
-        while (changed and safety < max_iters) : (safety += 1) {
-            changed = false;
-            for (g.edges.items, 0..) |edge, edge_idx| {
-                // Respect reversed edges from cycle breaking
-                const is_reversed = if (reversed_edges) |re| re[edge_idx] else false;
-                const from_id = if (is_reversed) edge.to else edge.from;
-                const to_id = if (is_reversed) edge.from else edge.to;
-
-                const from_idx = g.nodeIndex(from_id) orelse continue;
-                const to_idx = g.nodeIndex(to_id) orelse continue;
-                if (from_idx == to_idx) continue;
-
-                // Skip if the child is pinned — don't override explicit user intent
-                const to_node = g.nodeAt(to_idx) orelse continue;
-                if (to_node.pin) |to_pin| {
-                    if (to_pin.y != null) continue;
-                }
-
-                // Enforce: level[to] > level[from]
-                if (layer_assignment.levels[to_idx] <= layer_assignment.levels[from_idx]) {
-                    layer_assignment.levels[to_idx] = layer_assignment.levels[from_idx] + 1;
-                    layer_assignment.max_level = @max(layer_assignment.max_level, layer_assignment.levels[to_idx]);
-                    changed = true;
-                }
-            }
-        }
+        // Phase 2: Repair topological ordering after hints/constraints.
+        repairTopologicalLevels(g, &layer_assignment, reversed_edges);
 
         // Phase 3: Level compaction — collapse sparse level indices to dense
         // consecutive values. E.g. [0, 0, 12, 13, 14, 14] → [0, 0, 1, 2, 3, 3].
         // This prevents pin.y pixel-coordinate inflation from creating huge
         // level gaps that spawn excessive dummy nodes for skip-level edges.
-        {
-            const node_count = g.nodeCount();
-
-            // Collect unique levels
-            const unique_buf = try allocator.alloc(usize, node_count);
-            defer allocator.free(unique_buf);
-            var unique_count: usize = 0;
-
-            for (0..node_count) |ni| {
-                const lev = layer_assignment.levels[ni];
-                var found = false;
-                for (0..unique_count) |ui| {
-                    if (unique_buf[ui] == lev) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    unique_buf[unique_count] = lev;
-                    unique_count += 1;
-                }
-            }
-
-            // Sort unique levels (insertion sort — typically very few unique levels)
-            const unique_levels = unique_buf[0..unique_count];
-            for (1..unique_count) |i| {
-                const key = unique_levels[i];
-                var j: usize = i;
-                while (j > 0 and unique_levels[j - 1] > key) {
-                    unique_levels[j] = unique_levels[j - 1];
-                    j -= 1;
-                }
-                unique_levels[j] = key;
-            }
-
-            // Remap each node's level to its dense rank
-            for (0..node_count) |ni| {
-                const old_level = layer_assignment.levels[ni];
-                for (unique_levels, 0..) |ul, rank| {
-                    if (ul == old_level) {
-                        layer_assignment.levels[ni] = rank;
-                        break;
-                    }
-                }
-            }
-
-            // Update max_level to dense count
-            layer_assignment.max_level = if (unique_count > 0) unique_count - 1 else 0;
-        }
+        try compactLayerAssignment(g, &layer_assignment, allocator);
     }
 
     // Step 1b: Promote subgraph root/isolated nodes closer to siblings.
@@ -1340,11 +1443,7 @@ fn layoutSugiyama(g: *const Graph, allocator: std.mem.Allocator, config: LayoutC
         try subgraph_layout.promoteSubgraphRoots(g, &layer_assignment, allocator);
 
         // Re-compact levels after promotion may have left gaps
-        var new_max: usize = 0;
-        for (0..g.nodeCount()) |ni| {
-            new_max = @max(new_max, layer_assignment.levels[ni]);
-        }
-        layer_assignment.max_level = new_max;
+        recomputeMaxLevel(g, &layer_assignment);
     }
 
     // Step 2: Build virtual levels (includes dummy nodes for skip-level edges)
@@ -1998,6 +2097,82 @@ test "end-to-end layout: diamond" {
 
     // Should have 4 edges
     try std.testing.expectEqual(@as(usize, 4), result.getEdges().len);
+}
+
+test "layout: rank same keeps constrained nodes on one level" {
+    const allocator = std.testing.allocator;
+
+    var g = Graph.init(allocator);
+    defer g.deinit();
+
+    // A
+    // | \
+    // B  D
+    // |
+    // C
+    // D is pulled down to C's level by the same-rank constraint.
+    try g.addNode(1, "A");
+    try g.addNode(2, "B");
+    try g.addNode(3, "C");
+    try g.addNode(4, "D");
+    try g.addEdge(1, 2);
+    try g.addEdge(2, 3);
+    try g.addEdge(1, 4);
+    var result = try layout(&g, allocator, .{
+        .rank_constraints = &.{
+            .{ .kind = .same, .node_ids = &.{ 3, 4 } },
+        },
+    });
+    defer result.deinit();
+
+    const c = result.nodeById(3).?;
+    const d = result.nodeById(4).?;
+    try std.testing.expectEqual(@as(usize, 2), c.level);
+    try std.testing.expectEqual(c.level, d.level);
+}
+
+test "layout: rank min and max bias nodes to boundary levels" {
+    const allocator = std.testing.allocator;
+
+    var g = Graph.init(allocator);
+    defer g.deinit();
+
+    // A -> B -> C and isolated D/E for boundary rank constraints.
+    try g.addNode(1, "A");
+    try g.addNode(2, "B");
+    try g.addNode(3, "C");
+    try g.addNode(4, "D");
+    try g.addNode(5, "E");
+    try g.addEdge(1, 2);
+    try g.addEdge(2, 3);
+    var result = try layout(&g, allocator, .{
+        .rank_constraints = &.{
+            .{ .kind = .min, .node_ids = &.{4} },
+            .{ .kind = .max, .node_ids = &.{5} },
+        },
+    });
+    defer result.deinit();
+
+    const d = result.nodeById(4).?;
+    const e = result.nodeById(5).?;
+    try std.testing.expectEqual(@as(usize, 0), d.level);
+    try std.testing.expectEqual(result.getLevelCount() - 1, e.level);
+}
+
+test "layout: rank constraints reject missing nodes" {
+    const allocator = std.testing.allocator;
+
+    var g = Graph.init(allocator);
+    defer g.deinit();
+
+    try g.addNode(1, "A");
+
+    const result = layout(&g, allocator, .{
+        .rank_constraints = &.{
+            .{ .kind = .same, .node_ids = &.{ 1, 99 } },
+        },
+    });
+    try std.testing.expectError(error.NodeNotFound, result);
 }
 
 test "end-to-end render: simple chain" {
