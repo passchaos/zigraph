@@ -18,6 +18,127 @@ const edge_render = @import("edges.zig");
 const Point = edge_render.Point;
 const helpers = @import("helpers.zig");
 
+const PixelPt = struct { x: f64, y: f64 };
+const PixelRect = struct { x: f64, y: f64, w: f64, h: f64 };
+
+fn findNode(layout: *const LayoutIR, id: usize) ?ir_mod.LayoutNode(usize) {
+    const idx = layout.id_to_index.get(id) orelse return null;
+    if (idx >= layout.nodes.items.len) return null;
+    return layout.nodes.items[idx];
+}
+
+fn nodeRectPx(node: ir_mod.LayoutNode(usize), config: SvgConfig) PixelRect {
+    return .{
+        .x = @floatFromInt(node.x * config.char_width + config.padding),
+        .y = @floatFromInt(node.y * config.line_height + config.padding),
+        .w = @floatFromInt(node.width * config.char_width),
+        .h = @floatFromInt(node.height * config.line_height),
+    };
+}
+
+fn rectCenter(rect: PixelRect) PixelPt {
+    return .{
+        .x = rect.x + rect.w / 2.0,
+        .y = rect.y + rect.h / 2.0,
+    };
+}
+
+fn clipFromCenterToRankSide(center: PixelPt, toward: PixelPt, rect: PixelRect, extra: f64) PixelPt {
+    const dx = toward.x - center.x;
+    const dy = toward.y - center.y;
+    if (dx == 0 and dy == 0) return center;
+
+    if (@abs(dx) >= @abs(dy)) {
+        if (dx >= 0) {
+            return .{ .x = rect.x + rect.w + extra, .y = center.y };
+        }
+        return .{ .x = rect.x - extra, .y = center.y };
+    }
+
+    if (dy >= 0) {
+        return .{ .x = center.x, .y = rect.y + rect.h + extra };
+    }
+    return .{ .x = center.x, .y = rect.y - extra };
+}
+
+fn renderSingleSplineEdge(
+    writer: anytype,
+    edge: LayoutEdge,
+    edge_idx: usize,
+    config: SvgConfig,
+    style: ResolvedEdgeStyle,
+    directed: bool,
+    reversed: bool,
+    source_node: ?ir_mod.LayoutNode(usize),
+    target_node: ?ir_mod.LayoutNode(usize),
+) !void {
+    if (edge.path != .spline) return;
+
+    var from = PixelPt{
+        .x = @floatFromInt(edge.from_x * config.char_width + config.padding),
+        .y = @floatFromInt(edge.from_y * config.line_height + config.padding),
+    };
+    var to = PixelPt{
+        .x = @floatFromInt(edge.to_x * config.char_width + config.padding),
+        .y = @floatFromInt(edge.to_y * config.line_height + config.padding),
+    };
+    const spline = edge.path.spline;
+    const cp1 = PixelPt{
+        .x = @floatFromInt(spline.cp1_x * config.char_width + config.padding),
+        .y = @floatFromInt(spline.cp1_y * config.line_height + config.padding),
+    };
+    const cp2 = PixelPt{
+        .x = @floatFromInt(spline.cp2_x * config.char_width + config.padding),
+        .y = @floatFromInt(spline.cp2_y * config.line_height + config.padding),
+    };
+    if (source_node) |node| {
+        const rect = nodeRectPx(node, config);
+        from = clipFromCenterToRankSide(rectCenter(rect), cp1, rect, 0.0);
+    }
+    if (target_node) |node| {
+        const rect = nodeRectPx(node, config);
+        to = clipFromCenterToRankSide(rectCenter(rect), cp2, rect, 0.0);
+    }
+
+    const dx = @abs(to.x - from.x);
+    const dy = @abs(to.y - from.y);
+    const horizontal = blk: {
+        if (source_node != null and target_node != null) {
+            const source_rect = nodeRectPx(source_node.?, config);
+            const target_rect = nodeRectPx(target_node.?, config);
+            const starts_on_horizontal_side = from.x <= source_rect.x or from.x >= source_rect.x + source_rect.w;
+            const ends_on_horizontal_side = to.x <= target_rect.x or to.x >= target_rect.x + target_rect.w;
+            if (starts_on_horizontal_side and ends_on_horizontal_side) break :blk true;
+        }
+        break :blk dx >= dy;
+    };
+    const offset = @max((if (horizontal) dx else dy) * 0.45, 20.0);
+    const cp1_x = if (horizontal) from.x + (if (to.x >= from.x) offset else -offset) else from.x;
+    const cp1_y = if (horizontal) from.y else from.y + (if (to.y >= from.y) offset else -offset);
+    const cp2_x = if (horizontal) to.x - (if (to.x >= from.x) offset else -offset) else to.x;
+    const cp2_y = if (horizontal) to.y else to.y - (if (to.y >= from.y) offset else -offset);
+    const dash: []const u8 = if (reversed) " stroke-dasharray=\"6,3\"" else "";
+
+    try writer.print(
+        \\    <path d="M {d:.0} {d:.0} C {d:.0} {d:.0}, {d:.0} {d:.0}, {d:.0} {d:.0}"
+        \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
+        \\          data-type="edge" data-from="{d}" data-to="{d}"
+    , .{ from.x, from.y, cp1_x, cp1_y, cp2_x, cp2_y, to.x, to.y, style.stroke, config.edge_width, dash, edge.from_id, edge.to_id });
+    if (directed) {
+        if (style.marker_end_id) |mid| {
+            try writer.print(" marker-end=\"url(#zg-m-{d})\"", .{mid});
+        }
+        if (style.marker_start_id) |mid| {
+            try writer.print(" marker-start=\"url(#zg-m-{d})\"", .{mid});
+        }
+    }
+    if (style.extra_attrs) |attrs| {
+        try writer.print(" {s}", .{attrs});
+    }
+    _ = edge_idx;
+    try writer.writeAll("/>\n");
+}
+
 /// Render edges by grouping segments with the same edge_index into smooth splines.
 /// This stitches multi-segment edges through dummy nodes into single curved paths.
 pub fn renderStitchedEdges(writer: anytype, layout: *const LayoutIR, allocator: Allocator, config: SvgConfig, resolved_styles: []const ResolvedEdgeStyle, label_styles: []const EdgeLabelStyle) !void {
@@ -57,10 +178,45 @@ pub fn renderStitchedEdges(writer: anytype, layout: *const LayoutIR, allocator: 
             continue;
         }
 
-        // Sort segments by from_y (top to bottom)
-        std.mem.sort(LayoutEdge, segments.items, {}, struct {
-            fn lessThan(_: void, a: LayoutEdge, b: LayoutEdge) bool {
-                return a.from_y < b.from_y;
+        // Sort segments along the dominant growth axis. Rankdir transforms can
+        // make stitched edges progress horizontally, so from_y alone is not
+        // enough to keep dummy segments in source-to-target order.
+        var min_x: usize = std.math.maxInt(usize);
+        var max_x: usize = 0;
+        var min_y: usize = std.math.maxInt(usize);
+        var max_y: usize = 0;
+        var signed_dx: isize = 0;
+        var signed_dy: isize = 0;
+        for (segments.items) |seg| {
+            min_x = @min(min_x, @min(seg.from_x, seg.to_x));
+            max_x = @max(max_x, @max(seg.from_x, seg.to_x));
+            min_y = @min(min_y, @min(seg.from_y, seg.to_y));
+            max_y = @max(max_y, @max(seg.from_y, seg.to_y));
+            signed_dx += @as(isize, @intCast(seg.to_x)) - @as(isize, @intCast(seg.from_x));
+            signed_dy += @as(isize, @intCast(seg.to_y)) - @as(isize, @intCast(seg.from_y));
+        }
+        const x_range = max_x - min_x;
+        const y_range = max_y - min_y;
+        const sort_horizontal = x_range > y_range;
+        const ascending = if (sort_horizontal) signed_dx >= 0 else signed_dy >= 0;
+
+        const SortCtx = struct {
+            horizontal: bool,
+            asc: bool,
+        };
+        std.mem.sort(LayoutEdge, segments.items, SortCtx{ .horizontal = sort_horizontal, .asc = ascending }, struct {
+            fn key(ctx: SortCtx, edge: LayoutEdge) usize {
+                return if (ctx.horizontal) edge.from_x else edge.from_y;
+            }
+            fn lessThan(ctx: SortCtx, a: LayoutEdge, b: LayoutEdge) bool {
+                const ak = key(ctx, a);
+                const bk = key(ctx, b);
+                if (ak == bk) {
+                    const at = if (ctx.horizontal) a.from_y else a.from_x;
+                    const bt = if (ctx.horizontal) b.from_y else b.from_x;
+                    return if (ctx.asc) at < bt else at > bt;
+                }
+                return if (ctx.asc) ak < bk else ak > bk;
             }
         }.lessThan);
 
@@ -79,6 +235,9 @@ pub fn renderStitchedEdges(writer: anytype, layout: *const LayoutIR, allocator: 
         // End point
         const last_seg = segments.items[segments.items.len - 1];
         try points.append(allocator, .{ .x = last_seg.to_x, .y = last_seg.to_y });
+
+        const source_node = findNode(layout, segments.items[0].from_id);
+        const target_node = findNode(layout, last_seg.to_id);
 
         // Check if any segment carries a label
         var edge_label: ?[]const u8 = null;
@@ -112,13 +271,10 @@ pub fn renderStitchedEdges(writer: anytype, layout: *const LayoutIR, allocator: 
             std.mem.reverse(Point, points.items);
         }
 
-        // Render based on number of points
-        if (points.items.len == 2) {
-            // Simple direct edge
-            try edge_render.renderSingleEdge(writer, points.items[0], points.items[1], edge_idx, config, style, has_label, is_directed, is_reversed, first_seg.from_id, last_seg.to_id);
+        if (segments.items.len == 1 and segments.items[0].path == .spline) {
+            try renderSingleSplineEdge(writer, segments.items[0], edge_idx, config, style, is_directed, is_reversed, source_node, target_node);
         } else {
-            // Multi-point: render as smooth spline
-            try renderSplinePath(writer, points.items, edge_idx, allocator, config, style, has_label, is_directed, is_reversed, first_seg.from_id, last_seg.to_id);
+            try renderSplinePath(writer, points.items, edge_idx, allocator, config, style, has_label, is_directed, is_reversed, first_seg.from_id, last_seg.to_id, source_node, target_node);
         }
 
         // Render edge label (if any segment carries one)
@@ -205,13 +361,12 @@ pub fn renderStitchedEdges(writer: anytype, layout: *const LayoutIR, allocator: 
 
 /// Render a multi-point path as a smooth cubic bezier spline.
 /// Uses Catmull-Rom to Bezier conversion for smooth curves through all points.
-pub fn renderSplinePath(writer: anytype, points: []const Point, edge_idx: usize, allocator: Allocator, config: SvgConfig, style: ResolvedEdgeStyle, has_label: bool, directed: bool, reversed: bool, from_id: usize, to_id: usize) !void {
+pub fn renderSplinePath(writer: anytype, points: []const Point, edge_idx: usize, allocator: Allocator, config: SvgConfig, style: ResolvedEdgeStyle, has_label: bool, directed: bool, reversed: bool, from_id: usize, to_id: usize, source_node: ?ir_mod.LayoutNode(usize), target_node: ?ir_mod.LayoutNode(usize)) !void {
     if (points.len < 2) return;
 
     const n = points.len;
 
     // Convert points to pixel coordinates (dynamically allocated)
-    const PixelPt = struct { x: f64, y: f64 };
     const px_points = try allocator.alloc(PixelPt, n);
     defer allocator.free(px_points);
 
@@ -222,6 +377,15 @@ pub fn renderSplinePath(writer: anytype, points: []const Point, edge_idx: usize,
         };
     }
 
+    if (source_node) |node| {
+        const rect = nodeRectPx(node, config);
+        px_points[0] = clipFromCenterToRankSide(rectCenter(rect), px_points[1], rect, 0.0);
+    }
+    if (target_node) |node| {
+        const rect = nodeRectPx(node, config);
+        px_points[n - 1] = clipFromCenterToRankSide(rectCenter(rect), px_points[n - 2], rect, 0.0);
+    }
+
     // Store control points for debug rendering
     const CtrlPt = struct { x: f64, y: f64, from_x: f64, from_y: f64 };
     var control_list: std.ArrayListUnmanaged(CtrlPt) = .empty;
@@ -230,9 +394,27 @@ pub fn renderSplinePath(writer: anytype, points: []const Point, edge_idx: usize,
     // Start the visible path (text path is separate for correct L→R orientation)
     try writer.print("    <path d=\"M {d:.0} {d:.0}", .{ px_points[0].x, px_points[0].y });
 
-    // For 2 points, just draw a line
     if (n == 2) {
-        try writer.print(" L {d:.0} {d:.0}\"", .{ px_points[1].x, px_points[1].y });
+        const p1 = px_points[0];
+        const p2 = px_points[1];
+        const dx = @abs(p2.x - p1.x);
+        const dy = @abs(p2.y - p1.y);
+        // Follow the rank-growth axis at the endpoints. This keeps LR/RL edges
+        // leaving horizontally and TB/BT edges leaving vertically, instead of
+        // bending toward unrelated same-rank nodes.
+        const source_to_target_horizontal = if (source_node != null and target_node != null)
+            @abs(rectCenter(nodeRectPx(target_node.?, config)).x - rectCenter(nodeRectPx(source_node.?, config)).x) >=
+                @abs(rectCenter(nodeRectPx(target_node.?, config)).y - rectCenter(nodeRectPx(source_node.?, config)).y)
+        else
+            dx >= dy;
+        const offset = @max((if (source_to_target_horizontal) dx else dy) * 0.45, 20.0);
+        const cp1_x = if (source_to_target_horizontal) p1.x + (if (p2.x >= p1.x) offset else -offset) else p1.x;
+        const cp1_y = if (source_to_target_horizontal) p1.y else p1.y + (if (p2.y >= p1.y) offset else -offset);
+        const cp2_x = if (source_to_target_horizontal) p2.x - (if (p2.x >= p1.x) offset else -offset) else p2.x;
+        const cp2_y = if (source_to_target_horizontal) p2.y else p2.y - (if (p2.y >= p1.y) offset else -offset);
+        try writer.print(" C {d:.0} {d:.0}, {d:.0} {d:.0}, {d:.0} {d:.0}\"", .{
+            cp1_x, cp1_y, cp2_x, cp2_y, p2.x, p2.y,
+        });
     } else {
         // Use Catmull-Rom spline interpolation for smooth curves
         // For each segment, compute cubic bezier control points

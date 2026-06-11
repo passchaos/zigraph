@@ -1,7 +1,7 @@
 //! # 10 - Rank Constraints
 //!
-//! Demonstrates Graphviz-style rank hints in Sugiyama layout:
-//! nodes can be biased to the first/last level or kept on the same level.
+//! Demonstrates rank hints and rank direction in Sugiyama layout:
+//! nodes can be biased to boundaries, kept on the same rank, and laid out left-to-right.
 //!
 //! Run: `zig build run-svg_10_rank_constraints`
 
@@ -67,13 +67,13 @@ pub fn main(init: std.process.Init) !void {
     try g.addNode(2, "Auth");
     try g.addNode(3, "Catalog");
     try g.addNode(4, "Price");
+    try g.addNode(11, "Risk");
     try g.addNode(5, "Inventory");
     try g.addNode(6, "Quote");
     try g.addNode(7, "Audit");
     try g.addNode(8, "Response");
     try g.addNode(9, "Metrics");
     try g.addNode(10, "Archive");
-    try g.addNode(11, "Risk");
 
     try g.addEdge(1, 2);
     try g.addEdge(1, 3);
@@ -97,23 +97,38 @@ pub fn main(init: std.process.Init) !void {
     // Rank hints are layout configuration: Metrics stays near the source,
     // Audit is pulled down to Quote's level, Risk aligns with Inventory, and
     // Archive sinks to the bottom.
-    var ir = try zigraph.layout(&g, allocator, .{
+    const layout_config = zigraph.LayoutConfig{
         .layering = .network_simplex_fast,
         .positioning = .brandes_kopf,
-        .routing = .direct,
+        .routing = .spline,
         .rank_constraints = &ranks,
-    });
-    defer ir.deinit();
+        .level_spacing = 8,
+    };
 
-    const svg = try zigraph.svg.render(&ir, allocator, .{
+    var ir_tb = try zigraph.layout(&g, allocator, layout_config);
+    defer ir_tb.deinit();
+
+    var ir_lr = try zigraph.layout(&g, allocator, .{
+        .layering = layout_config.layering,
+        .positioning = layout_config.positioning,
+        .routing = layout_config.routing,
+        .rank_constraints = layout_config.rank_constraints,
+        .level_spacing = layout_config.level_spacing,
+        .rankdir = .lr,
+    });
+    defer ir_lr.deinit();
+
+    const svg_tb = try zigraph.svg.render(&ir_tb, allocator, .{
         .node_style_fn = &nodeStyle,
         .edge_style_fn = &edgeStyle,
     });
-    defer allocator.free(svg);
+    defer allocator.free(svg_tb);
+    try writeSvg(io, "10_rank_constraints_tb", svg_tb);
 
-    try writeSvg(io, "10_rank_constraints", svg);
-
-    const txt = try zigraph.terminal.renderWithConfig(&ir, allocator, .{});
-    defer allocator.free(txt);
-    std.debug.print("\n{s}\n", .{txt});
+    const svg_lr = try zigraph.svg.render(&ir_lr, allocator, .{
+        .node_style_fn = &nodeStyle,
+        .edge_style_fn = &edgeStyle,
+    });
+    defer allocator.free(svg_lr);
+    try writeSvg(io, "10_rank_constraints", svg_lr);
 }

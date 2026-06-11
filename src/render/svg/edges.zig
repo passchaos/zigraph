@@ -362,11 +362,17 @@ pub fn renderSingleEdge(writer: anytype, from: Point, to: Point, edge_idx: usize
             try writeExtraAttrs(writer, style);
             try writer.writeAll("/>\n");
         } else {
-            // Normal edge: straight line
+            // Normal stitched edge: cubic bezier in the dominant direction.
+            const horizontal = dx >= dy;
+            const offset = @max((if (horizontal) dx else dy) * 0.45, 20.0);
+            const cp1_x = if (horizontal) fx + (if (tx >= fx) offset else -offset) else fx;
+            const cp1_y = if (horizontal) fy else fy + (if (ty >= fy) offset else -offset);
+            const cp2_x = if (horizontal) tx - (if (tx >= fx) offset else -offset) else tx;
+            const cp2_y = if (horizontal) ty else ty - (if (ty >= fy) offset else -offset);
             try writer.print(
-                \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}" 
-                \\          stroke="{s}" stroke-width="{d}"{s}
-            , .{ from_x, from_y, to_x, to_y, style.stroke, config.edge_width, dash });
+                \\    <path d="M {d:.0} {d:.0} C {d:.0} {d:.0}, {d:.0} {d:.0}, {d:.0} {d:.0}"
+                \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
+            , .{ fx, fy, cp1_x, cp1_y, cp2_x, cp2_y, tx, ty, style.stroke, config.edge_width, dash });
             try writeEdgeDataAttrs(writer, style.extra_attrs, from_id, to_id);
             if (directed) try writeMarkerEndAttr(writer, style);
             try writeExtraAttrs(writer, style);

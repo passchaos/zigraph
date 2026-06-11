@@ -411,6 +411,9 @@ const output = try zigraph.render(&graph, allocator, .{
     // Edge routing
     .routing = .direct,  // or .spline
 
+    // Rank direction
+    .rankdir = .tb, // .tb, .bt, .lr, .rl
+
     // Spacing
     .node_spacing = 3,
     .level_spacing = 2,

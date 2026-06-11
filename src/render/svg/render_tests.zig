@@ -87,8 +87,8 @@ test "svg: edge rendering" {
     const svg = try render(&layout, allocator, .{});
     defer allocator.free(svg);
 
-    // Should contain line element for direct edge
-    try std.testing.expect(std.mem.indexOf(u8, svg, "<line") != null);
+    // Stitched rendering emits even simple edges as path geometry.
+    try std.testing.expect(std.mem.indexOf(u8, svg, "<path") != null);
 }
 
 test "svg: corner edge rendering" {
