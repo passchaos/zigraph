@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" 
+     width="510" height="460" 
+     viewBox="0 0 510 460">
+
+  <!-- Marker definitions -->
+  <defs>
+    <marker id="zg-m-0" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#3e63dd"/>
+    </marker>
+    <marker id="zg-m-1" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#e54d2e"/>
+    </marker>
+    <marker id="zg-m-2" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#30a46c"/>
+    </marker>
+    <marker id="zg-m-3" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#f76b15"/>
+    </marker>
+    <marker id="zg-m-4" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#8e4ec6"/>
+    </marker>
+    <marker id="zg-m-5" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#12a594"/>
+    </marker>
+    <marker id="zg-m-6" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#e93d82"/>
+    </marker>
+    <marker id="zg-m-7" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#ffe629"/>
+    </marker>
+    <marker id="zg-m-8" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#f5d90a"/>
+    </marker>
+    <marker id="zg-m-9" markerWidth="8" markerHeight="8" 
+            refX="8" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <polygon points="0 0, 8 4, 0 8" fill="#89ddff"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="100%" height="100%" fill="white"/>
+  <!-- Edges (rendered first, under nodes) -->
+  <g id="edges">
+    <line x1="240" y1="280" x2="220" y2="340" 
+          stroke="#ffe629" stroke-width="2" data-type="edge" data-from="6" data-to="8" marker-end="url(#zg-m-7)"/>
+    <line x1="220" y1="40" x2="300" y2="100" 
+          stroke="#e54d2e" stroke-width="2" data-type="edge" data-from="1" data-to="3" marker-end="url(#zg-m-1)"/>
+    <line x1="220" y1="40" x2="200" y2="100" 
+          stroke="#3e63dd" stroke-width="2" data-type="edge" data-from="1" data-to="2" marker-end="url(#zg-m-0)"/>
+    <line x1="300" y1="120" x2="340" y2="180" 
+          stroke="#8e4ec6" stroke-width="2" data-type="edge" data-from="3" data-to="5" marker-end="url(#zg-m-4)"/>
+    <line x1="340" y1="200" x2="240" y2="260" 
+          stroke="#e93d82" stroke-width="2" data-type="edge" data-from="5" data-to="6" marker-end="url(#zg-m-6)"/>
+    <path d="M 200 120 C 183 130, 125 157, 100 180 C 75 203, 58 247, 50 260" fill="none" stroke="#7ce2fe" stroke-width="2" data-type="edge" data-from="2" data-to="7"/>
+    <line x1="460" y1="200" x2="240" y2="260" 
+          stroke="#89ddff" stroke-width="2" data-type="edge" data-from="11" data-to="6" marker-end="url(#zg-m-9)"/>
+    <line x1="220" y1="200" x2="240" y2="260" 
+          stroke="#12a594" stroke-width="2" data-type="edge" data-from="4" data-to="6" marker-end="url(#zg-m-5)"/>
+    <line x1="220" y1="360" x2="210" y2="420" 
+          stroke="#f5d90a" stroke-width="2" data-type="edge" data-from="8" data-to="10" marker-end="url(#zg-m-8)"/>
+    <line x1="200" y1="120" x2="220" y2="180" 
+          stroke="#30a46c" stroke-width="2" data-type="edge" data-from="2" data-to="4" marker-end="url(#zg-m-2)"/>
+    <line x1="300" y1="120" x2="220" y2="180" 
+          stroke="#f76b15" stroke-width="2" data-type="edge" data-from="3" data-to="4" marker-end="url(#zg-m-3)"/>
+  </g>
+
+  <!-- Nodes -->
+  <g id="nodes">
+    <g transform="translate(180,20)" fill="#dcfce7" stroke="#16a34a" data-type="node" data-id="1">
+      <rect x="0" y="0" width="90" height="20" rx="4" ry="4"/>
+<text x="45" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Request</text>
+    </g>
+    <g transform="translate(170,100)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="2">
+      <rect x="0" y="0" width="60" height="20" rx="4" ry="4"/>
+<text x="30" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Auth</text>
+    </g>
+    <g transform="translate(260,100)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="3">
+      <rect x="0" y="0" width="90" height="20" rx="4" ry="4"/>
+<text x="45" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Catalog</text>
+    </g>
+    <g transform="translate(190,180)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="4">
+      <rect x="0" y="0" width="70" height="20" rx="4" ry="4"/>
+<text x="35" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Price</text>
+    </g>
+    <g transform="translate(290,180)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="5">
+      <rect x="0" y="0" width="110" height="20" rx="4" ry="4"/>
+<text x="55" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Inventory</text>
+    </g>
+    <g transform="translate(210,260)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="6">
+      <rect x="0" y="0" width="70" height="20" rx="4" ry="4"/>
+<text x="35" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Quote</text>
+    </g>
+    <g transform="translate(20,260)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="7">
+      <rect x="0" y="0" width="70" height="20" rx="4" ry="4"/>
+<text x="35" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Audit</text>
+    </g>
+    <g transform="translate(170,340)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="8">
+      <rect x="0" y="0" width="100" height="20" rx="4" ry="4"/>
+<text x="50" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Response</text>
+    </g>
+    <g transform="translate(300,20)" fill="#dcfce7" stroke="#16a34a" data-type="node" data-id="9">
+      <rect x="0" y="0" width="90" height="20" rx="4" ry="4"/>
+<text x="45" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Metrics</text>
+    </g>
+    <g transform="translate(170,420)" fill="#fee2e2" stroke="#dc2626" data-type="node" data-id="10">
+      <rect x="0" y="0" width="90" height="20" rx="4" ry="4"/>
+<text x="45" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Archive</text>
+    </g>
+    <g transform="translate(430,180)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="11">
+      <rect x="0" y="0" width="60" height="20" rx="4" ry="4"/>
+<text x="30" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Risk</text>
+    </g>
+  </g>
+</svg>
