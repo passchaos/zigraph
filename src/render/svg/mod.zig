@@ -144,6 +144,7 @@ pub fn render(layout: *const LayoutIR, allocator: Allocator, config: SvgConfig) 
             .label = edge.label,
             .directed = edge.directed,
             .reversed = edge.reversed,
+            .user_data = config.style_user_data,
             .arena = arena_alloc,
         });
     }
@@ -171,6 +172,7 @@ pub fn render(layout: *const LayoutIR, allocator: Allocator, config: SvgConfig) 
                 .label = edge.label,
                 .directed = edge.directed,
                 .reversed = edge.reversed,
+                .user_data = config.style_user_data,
                 .arena = arena_alloc,
             });
         }
@@ -246,6 +248,7 @@ pub fn render(layout: *const LayoutIR, allocator: Allocator, config: SvgConfig) 
             .width = node.width * config.char_width,
             .height = node.height * config.line_height,
             .is_implicit = node.kind == .implicit,
+            .user_data = config.style_user_data,
             .arena = arena_alloc,
         });
     }
@@ -264,6 +267,7 @@ pub fn render(layout: *const LayoutIR, allocator: Allocator, config: SvgConfig) 
             .total_subgraphs = sg_items.len,
             .width = sg.width * config.char_width,
             .height = sg.height * config.line_height,
+            .user_data = config.style_user_data,
             .arena = arena_alloc,
         });
     }

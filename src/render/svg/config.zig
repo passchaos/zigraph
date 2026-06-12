@@ -17,6 +17,10 @@
 //! }
 //! const svg = try zigraph.svg.render(&ir, alloc, .{ .edge_style_fn = &myStyle });
 //! ```
+//!
+//! If style decisions need external state, store a pointer in
+//! `SvgConfig.style_user_data` and recover it from `ctx.user_data` inside the
+//! callback.
 
 const std = @import("std");
 const colors = @import("../color/mod.zig");
@@ -292,6 +296,13 @@ pub const SvgConfig = struct {
     stitch_splines: bool = true,
     /// Show dummy nodes (when false, they're hidden)
     show_dummy_nodes: bool = false,
+
+    /// Optional user data passed to all style contexts.
+    ///
+    /// This keeps style callbacks as simple function pointers while still
+    /// allowing callers to provide tables, palettes, or semantic metadata used
+    /// to distinguish nodes, edges, labels, and subgraphs.
+    style_user_data: ?*const anyopaque = null,
 
     /// Edge style function. Receives per-edge context, returns visual style.
     ///

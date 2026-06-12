@@ -76,6 +76,9 @@ pub const EdgeStyleContext = struct {
     directed: bool,
     /// Whether this edge was reversed for cycle breaking (back-edge)
     reversed: bool,
+    /// Optional user-provided data from the renderer config.
+    /// Use @ptrCast/@alignCast to recover your own type.
+    user_data: ?*const anyopaque = null,
     /// Arena allocator — use for dynamic string formatting (e.g., `allocPrint`).
     /// Memory persists until the render pass completes, then bulk-freed.
     arena: Allocator,
@@ -111,6 +114,9 @@ pub const NodeStyleContext = struct {
     /// Whether this node was implicitly created (mentioned as edge target
     /// but never explicitly added). Presets render dashed borders for these.
     is_implicit: bool,
+    /// Optional user-provided data from the renderer config.
+    /// Use @ptrCast/@alignCast to recover your own type.
+    user_data: ?*const anyopaque = null,
     /// Arena allocator — use for dynamic string formatting (e.g., `allocPrint`).
     /// Memory persists until the render pass completes, then bulk-freed.
     arena: Allocator,
@@ -146,6 +152,9 @@ pub const SubgraphStyleContext = struct {
     width: usize,
     /// Bounding box height in pixels (layout-computed)
     height: usize,
+    /// Optional user-provided data from the renderer config.
+    /// Use @ptrCast/@alignCast to recover your own type.
+    user_data: ?*const anyopaque = null,
     /// Arena allocator — use for dynamic string formatting (e.g., `allocPrint`).
     /// Memory persists until the render pass completes, then bulk-freed.
     arena: Allocator,
