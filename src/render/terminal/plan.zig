@@ -185,6 +185,7 @@ pub const RenderPlan = struct {
                 .width = node.width,
                 .height = node.height,
                 .is_implicit = node.kind == .implicit,
+                .user_data = config.style_user_data,
                 .arena = alloc,
             });
             // When paint_fn is set, use the node's declared height from the IR;
@@ -237,6 +238,7 @@ pub const RenderPlan = struct {
                     .total_subgraphs = sgs.len,
                     .width = sg.width,
                     .height = sg.height,
+                    .user_data = config.style_user_data,
                     .arena = alloc,
                 });
                 const new_y = if (total_extra == 0) sg.y else yTransform(sg.y, num_levels, level_ir_ys, cumulative_extra);
@@ -272,6 +274,7 @@ pub const RenderPlan = struct {
                 .label = edge.label,
                 .directed = edge.directed,
                 .reversed = edge.reversed,
+                .user_data = config.style_user_data,
                 .arena = alloc,
             });
             const edge_color: CellColor = if (style.color != .default)
@@ -338,6 +341,7 @@ pub const RenderPlan = struct {
                     .width = node.width,
                     .height = node.height,
                     .is_implicit = node.kind == .implicit,
+                    .user_data = config.style_user_data,
                     .arena = alloc,
                 });
             node_plans_list.appendAssumeCapacity(.{
@@ -451,6 +455,7 @@ pub const RenderPlan = struct {
                         .label = edge.label,
                         .directed = edge.directed,
                         .reversed = edge.reversed,
+                        .user_data = config.style_user_data,
                         .arena = alloc,
                     });
 

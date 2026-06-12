@@ -398,6 +398,13 @@ pub const Config = struct {
     /// CSS style string for the `<pre>` wrapper when `output_format = .html_pre`.
     html_pre_style: []const u8 = "font-family:monospace;line-height:1.2",
 
+    /// Optional user data passed to all style contexts.
+    ///
+    /// This keeps style callbacks as simple function pointers while still
+    /// allowing callers to provide tables, palettes, or semantic metadata used
+    /// to distinguish nodes, edges, labels, and subgraphs.
+    style_user_data: ?*const anyopaque = null,
+
     /// Per-edge style function — returns line weight, color, markers.
     edge_style_fn: *const fn (EdgeStyleContext) TerminalEdgeStyle = &defaultEdgeStyle,
 

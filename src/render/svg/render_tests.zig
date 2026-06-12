@@ -487,6 +487,52 @@ test "svg: custom node_style_fn" {
     try std.testing.expect(std.mem.indexOf(u8, svg, ">Custom<") != null);
 }
 
+test "svg: style_user_data reaches node style function" {
+    const allocator = std.testing.allocator;
+
+    var layout = LayoutIR.init(allocator);
+    defer layout.deinit();
+
+    try layout.addNode(.{
+        .id = 1,
+        .label = "User",
+        .x = 0,
+        .y = 0,
+        .width = 6,
+        .center_x = 3,
+        .level = 0,
+        .level_position = 0,
+    });
+    layout.setDimensions(10, 5);
+
+    const UserStyle = struct {
+        fill: []const u8,
+        stroke: []const u8,
+    };
+    const user_style = UserStyle{ .fill = "#123456", .stroke = "#abcdef" };
+
+    const svg = try render(&layout, allocator, .{
+        .style_user_data = &user_style,
+        .node_style_fn = &struct {
+            fn style(ctx: NodeStyleContext) NodeStyle {
+                const data: *const UserStyle = @ptrCast(@alignCast(ctx.user_data.?));
+                return .{
+                    .shape_svg = std.fmt.allocPrint(ctx.arena,
+                        \\<rect x="0" y="0" width="{d}" height="{d}"/>
+                        \\<text x="{d}" y="{d}" text-anchor="middle" fill="#333" stroke="none">{s}</text>
+                    , .{ ctx.width, ctx.height, ctx.width / 2, ctx.height / 2 + 4, ctx.label }) catch "",
+                    .fill = data.fill,
+                    .stroke = data.stroke,
+                };
+            }
+        }.style,
+    });
+    defer allocator.free(svg);
+
+    try std.testing.expect(std.mem.indexOf(u8, svg, "fill=\"#123456\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, svg, "stroke=\"#abcdef\"") != null);
+}
+
 test "svg: custom subgraph_style_fn" {
     const allocator = std.testing.allocator;
 

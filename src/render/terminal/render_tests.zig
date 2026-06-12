@@ -1143,6 +1143,31 @@ test "subgraph: border color is applied" {
     try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;033m") != null);
 }
 
+test "subgraph: style_user_data reaches subgraph style function" {
+    const allocator = std.testing.allocator;
+    var layout_ir = try makeSubgraphTestIR(allocator);
+    defer layout_ir.deinit();
+
+    const UserStyle = struct {
+        color: u8,
+    };
+    const user_style = UserStyle{ .color = 45 };
+
+    const output = try renderWithConfig(&layout_ir, allocator, .{
+        .color_mode = .ansi256,
+        .style_user_data = &user_style,
+        .subgraph_style_fn = &struct {
+            fn f(ctx: SubgraphStyleContext) TerminalSubgraphStyle {
+                const data: *const UserStyle = @ptrCast(@alignCast(ctx.user_data.?));
+                return .{ .color = .{ .ansi256 = data.color } };
+            }
+        }.f,
+    });
+    defer allocator.free(output);
+
+    try std.testing.expect(std.mem.indexOf(u8, output, "\x1b[38;5;045m") != null);
+}
+
 test "subgraph: label_pos inside places label below border" {
     const allocator = std.testing.allocator;
 
