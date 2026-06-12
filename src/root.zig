@@ -1410,11 +1410,113 @@ fn divCeilUsize(n: usize, d: usize) usize {
 }
 
 fn scaleHorizontalRankAxis(v: usize) usize {
+    // SVG cells are roughly twice as tall as they are wide. When ranks grow
+    // horizontally, preserve the visual TB rank distance in x-layout cells.
     return v * 2;
 }
 
 fn scaleHorizontalOrderAxis(v: usize) usize {
+    // The order axis becomes SVG rows, whose pixels are roughly twice as high
+    // as columns are wide. Compress by the same ratio used above.
     return divCeilUsize(v, 2);
+}
+
+const RankDirRect = struct {
+    x: usize,
+    y: usize,
+    width: usize,
+    height: usize,
+};
+
+const HorizontalRankDirGeometry = struct {
+    rankdir: RankDir,
+    old_rank: []usize,
+    lr_rank: []usize,
+    total_width: usize,
+    allocator: std.mem.Allocator,
+
+    fn deinit(self: *HorizontalRankDirGeometry) void {
+        self.allocator.free(self.old_rank);
+        self.allocator.free(self.lr_rank);
+    }
+
+    fn mapRankCoord(self: *const HorizontalRankDirGeometry, y: usize) usize {
+        if (self.old_rank.len == 0) return y;
+        if (self.old_rank.len == 1) {
+            return if (self.rankdir == .lr) self.lr_rank[0] else self.total_width - self.lr_rank[0];
+        }
+
+        var lr_x: usize = self.lr_rank[self.lr_rank.len - 1];
+        if (y <= self.old_rank[0]) {
+            lr_x = self.lr_rank[0];
+        } else if (y >= self.old_rank[self.old_rank.len - 1]) {
+            lr_x = self.lr_rank[self.lr_rank.len - 1];
+        } else {
+            for (0..(self.old_rank.len - 1)) |i| {
+                const old_a = self.old_rank[i];
+                const old_b = self.old_rank[i + 1];
+                if (y < old_a or y > old_b) continue;
+
+                const old_span = old_b - old_a;
+                const new_span = self.lr_rank[i + 1] - self.lr_rank[i];
+                lr_x = if (old_span == 0) self.lr_rank[i] else self.lr_rank[i] + (y - old_a) * new_span / old_span;
+                break;
+            }
+        }
+
+        return if (self.rankdir == .lr) lr_x else self.total_width - lr_x;
+    }
+
+    fn point(self: *const HorizontalRankDirGeometry, x: usize, y: usize) struct { x: usize, y: usize } {
+        return .{ .x = self.mapRankCoord(y), .y = scaleHorizontalOrderAxis(x) };
+    }
+
+    fn rect(self: *const HorizontalRankDirGeometry, x: usize, y: usize, width: usize, height: usize) RankDirRect {
+        const a = self.mapRankCoord(y);
+        const b = self.mapRankCoord(y + height);
+        const left = @min(a, b);
+        const right = @max(a, b);
+        return .{ .x = left, .y = scaleHorizontalOrderAxis(x), .width = right - left, .height = scaleHorizontalOrderAxis(width) };
+    }
+};
+
+fn buildHorizontalRankDirGeometry(result: *const LayoutIR(usize), rankdir: RankDir, allocator: std.mem.Allocator) !HorizontalRankDirGeometry {
+    var max_level: usize = 0;
+    for (result.nodes.items) |node| max_level = @max(max_level, node.level);
+    const level_count = max_level + 1;
+
+    const old_rank = try allocator.alloc(usize, level_count);
+    errdefer allocator.free(old_rank);
+    const counts = try allocator.alloc(usize, level_count);
+    defer allocator.free(counts);
+    const col_widths = try allocator.alloc(usize, level_count);
+    defer allocator.free(col_widths);
+    @memset(old_rank, 0);
+    @memset(counts, 0);
+    @memset(col_widths, 1);
+
+    for (result.nodes.items) |node| {
+        old_rank[node.level] += node.center_y;
+        counts[node.level] += 1;
+        col_widths[node.level] = @max(col_widths[node.level], node.width);
+    }
+    for (old_rank, 0..) |*rank_y, level| {
+        rank_y.* = if (counts[level] == 0) level else rank_y.* / counts[level];
+    }
+
+    const lr_rank = try allocator.alloc(usize, level_count);
+    errdefer allocator.free(lr_rank);
+    var cursor: usize = 0;
+    for (0..level_count) |level| {
+        lr_rank[level] = cursor + col_widths[level] / 2;
+        cursor += col_widths[level];
+        if (level + 1 < level_count) {
+            const old_gap = if (old_rank[level + 1] > old_rank[level]) old_rank[level + 1] - old_rank[level] else 1;
+            cursor += @max(scaleHorizontalRankAxis(old_gap), 4);
+        }
+    }
+
+    return .{ .rankdir = rankdir, .old_rank = old_rank, .lr_rank = lr_rank, .total_width = cursor, .allocator = allocator };
 }
 
 fn transformPointForRankDir(x: usize, y: usize, height: usize, rankdir: RankDir) struct { x: usize, y: usize } {
@@ -1426,7 +1528,7 @@ fn transformPointForRankDir(x: usize, y: usize, height: usize, rankdir: RankDir)
     };
 }
 
-fn transformRectForRankDir(x: usize, y: usize, width: usize, height: usize, total_height: usize, rankdir: RankDir) struct { x: usize, y: usize, width: usize, height: usize } {
+fn transformRectForRankDir(x: usize, y: usize, width: usize, height: usize, total_height: usize, rankdir: RankDir) RankDirRect {
     return switch (rankdir) {
         .tb => .{ .x = x, .y = y, .width = width, .height = height },
         .bt => .{ .x = x, .y = total_height - (y + height), .width = width, .height = height },
@@ -1437,6 +1539,15 @@ fn transformRectForRankDir(x: usize, y: usize, width: usize, height: usize, tota
 
 fn transformNodeForRankDir(node: *ir.LayoutNode(usize), total_height: usize, rankdir: RankDir) void {
     const center = transformPointForRankDir(node.center_x, node.center_y, total_height, rankdir);
+
+    node.center_x = center.x;
+    node.center_y = center.y;
+    node.x = if (center.x >= node.width / 2) center.x - node.width / 2 else 0;
+    node.y = if (center.y >= node.height / 2) center.y - node.height / 2 else 0;
+}
+
+fn transformHorizontalNodeForRankDir(node: *ir.LayoutNode(usize), geometry: *const HorizontalRankDirGeometry) void {
+    const center = geometry.point(node.center_x, node.center_y);
 
     node.center_x = center.x;
     node.center_y = center.y;
@@ -1510,53 +1621,149 @@ fn transformEdgePathForRankDir(edge: *ir.LayoutEdge(usize), height: usize, rankd
     }
 }
 
-fn applyRankDirEdgePorts(result: *LayoutIR(usize), rankdir: RankDir) void {
-    if (rankdir == .tb) return;
+fn transformHorizontalEdgePathForRankDir(edge: *ir.LayoutEdge(usize), geometry: *const HorizontalRankDirGeometry, allocator: std.mem.Allocator) !void {
+    switch (edge.path) {
+        .direct => {},
+        .corner => |corner| {
+            var waypoints: std.ArrayListUnmanaged(ir.EdgePath(usize).Waypoint) = .empty;
+            errdefer waypoints.deinit(allocator);
 
+            const first = geometry.point(edge.from_x, corner.horizontal_y);
+            const second = geometry.point(edge.to_x, corner.horizontal_y);
+            try waypoints.append(allocator, .{ .x = first.x, .y = first.y });
+            try waypoints.append(allocator, .{ .x = second.x, .y = second.y });
+
+            edge.path = .{ .multi_segment = .{
+                .waypoints = waypoints,
+                .allocator = allocator,
+            } };
+        },
+        .side_channel => |side| {
+            var waypoints: std.ArrayListUnmanaged(ir.EdgePath(usize).Waypoint) = .empty;
+            errdefer waypoints.deinit(allocator);
+
+            const first = geometry.point(side.channel_x, side.start_y);
+            const second = geometry.point(side.channel_x, side.end_y);
+            try waypoints.append(allocator, .{ .x = first.x, .y = first.y });
+            try waypoints.append(allocator, .{ .x = second.x, .y = second.y });
+
+            edge.path = .{ .multi_segment = .{
+                .waypoints = waypoints,
+                .allocator = allocator,
+            } };
+        },
+        .multi_segment => |*multi| {
+            for (multi.waypoints.items) |*wp| {
+                const transformed = geometry.point(wp.x, wp.y);
+                wp.x = transformed.x;
+                wp.y = transformed.y;
+            }
+        },
+        .spline => |*spline| {
+            const cp1 = geometry.point(spline.cp1_x, spline.cp1_y);
+            const cp2 = geometry.point(spline.cp2_x, spline.cp2_y);
+            spline.cp1_x = cp1.x;
+            spline.cp1_y = cp1.y;
+            spline.cp2_x = cp2.x;
+            spline.cp2_y = cp2.y;
+        },
+    }
+}
+
+fn setEdgePortsForRankDir(edge: *ir.LayoutEdge(usize), from_node: ir.LayoutNode(usize), to_node: ir.LayoutNode(usize), rankdir: RankDir) void {
+    switch (rankdir) {
+        .tb => {
+            edge.from_x = from_node.center_x;
+            edge.from_y = from_node.y + from_node.height;
+            edge.to_x = to_node.center_x;
+            edge.to_y = to_node.y;
+        },
+        .bt => {
+            edge.from_x = from_node.center_x;
+            edge.from_y = from_node.y;
+            edge.to_x = to_node.center_x;
+            edge.to_y = to_node.y + to_node.height;
+        },
+        .lr => {
+            edge.from_x = from_node.x + from_node.width;
+            edge.from_y = from_node.center_y;
+            edge.to_x = to_node.x;
+            edge.to_y = to_node.center_y;
+        },
+        .rl => {
+            edge.from_x = from_node.x;
+            edge.from_y = from_node.center_y;
+            edge.to_x = to_node.x + to_node.width;
+            edge.to_y = to_node.center_y;
+        },
+    }
+}
+
+fn anchorTransformedPathToPorts(edge: *ir.LayoutEdge(usize), rankdir: RankDir) void {
+    switch (edge.path) {
+        .direct => {},
+        .corner => {},
+        .side_channel => {},
+        .spline => |*spline| {
+            const dx = if (edge.to_x >= edge.from_x) edge.to_x - edge.from_x else edge.from_x - edge.to_x;
+            const dy = if (edge.to_y >= edge.from_y) edge.to_y - edge.from_y else edge.from_y - edge.to_y;
+            switch (rankdir) {
+                .tb => {
+                    const offset = @max(dy / 2, 1);
+                    spline.cp1_x = edge.from_x;
+                    spline.cp1_y = edge.from_y + offset;
+                    spline.cp2_x = edge.to_x;
+                    spline.cp2_y = if (edge.to_y > offset) edge.to_y - offset else 0;
+                },
+                .bt => {
+                    const offset = @max(dy / 2, 1);
+                    spline.cp1_x = edge.from_x;
+                    spline.cp1_y = if (edge.from_y > offset) edge.from_y - offset else 0;
+                    spline.cp2_x = edge.to_x;
+                    spline.cp2_y = edge.to_y + offset;
+                },
+                .lr => {
+                    const offset = @max(dx / 2, 1);
+                    spline.cp1_x = edge.from_x + offset;
+                    spline.cp1_y = edge.from_y;
+                    spline.cp2_x = if (edge.to_x > offset) edge.to_x - offset else 0;
+                    spline.cp2_y = edge.to_y;
+                },
+                .rl => {
+                    const offset = @max(dx / 2, 1);
+                    spline.cp1_x = if (edge.from_x > offset) edge.from_x - offset else 0;
+                    spline.cp1_y = edge.from_y;
+                    spline.cp2_x = edge.to_x + offset;
+                    spline.cp2_y = edge.to_y;
+                },
+            }
+        },
+        .multi_segment => |*multi| {
+            if (multi.waypoints.items.len == 0) return;
+
+            switch (rankdir) {
+                .tb, .bt => {
+                    multi.waypoints.items[0].x = edge.from_x;
+                    multi.waypoints.items[multi.waypoints.items.len - 1].x = edge.to_x;
+                },
+                .lr, .rl => {
+                    multi.waypoints.items[0].y = edge.from_y;
+                    multi.waypoints.items[multi.waypoints.items.len - 1].y = edge.to_y;
+                },
+            }
+        },
+    }
+}
+
+fn applyRankDirEdgePorts(result: *LayoutIR(usize), rankdir: RankDir) void {
     for (result.edges.items) |*edge| {
         const from_idx = result.id_to_index.get(edge.from_id) orelse continue;
         const to_idx = result.id_to_index.get(edge.to_id) orelse continue;
         const from_node = result.nodes.items[from_idx];
         const to_node = result.nodes.items[to_idx];
 
-        switch (rankdir) {
-            .tb => unreachable,
-            .bt, .lr, .rl => {
-                edge.from_x = from_node.center_x;
-                edge.from_y = from_node.center_y;
-                edge.to_x = to_node.center_x;
-                edge.to_y = to_node.center_y;
-            },
-        }
-
-        if (edge.path == .spline) {
-            const dx = if (edge.to_x >= edge.from_x) edge.to_x - edge.from_x else edge.from_x - edge.to_x;
-            const dy = if (edge.to_y >= edge.from_y) edge.to_y - edge.from_y else edge.from_y - edge.to_y;
-            switch (rankdir) {
-                .tb => unreachable,
-                .bt => {
-                    const offset = @max(dy / 2, 1);
-                    edge.path.spline.cp1_x = edge.from_x;
-                    edge.path.spline.cp1_y = if (edge.from_y > offset) edge.from_y - offset else 0;
-                    edge.path.spline.cp2_x = edge.to_x;
-                    edge.path.spline.cp2_y = edge.to_y + offset;
-                },
-                .lr => {
-                    const offset = @max(dx / 2, 1);
-                    edge.path.spline.cp1_x = edge.from_x + offset;
-                    edge.path.spline.cp1_y = edge.from_y;
-                    edge.path.spline.cp2_x = if (edge.to_x > offset) edge.to_x - offset else 0;
-                    edge.path.spline.cp2_y = edge.to_y;
-                },
-                .rl => {
-                    const offset = @max(dx / 2, 1);
-                    edge.path.spline.cp1_x = if (edge.from_x > offset) edge.from_x - offset else 0;
-                    edge.path.spline.cp1_y = edge.from_y;
-                    edge.path.spline.cp2_x = edge.to_x + offset;
-                    edge.path.spline.cp2_y = edge.to_y;
-                },
-            }
-        }
+        setEdgePortsForRankDir(edge, from_node, to_node, rankdir);
+        anchorTransformedPathToPorts(edge, rankdir);
     }
 }
 
@@ -1565,28 +1772,57 @@ fn applyRankDirTransform(result: *LayoutIR(usize), rankdir: RankDir, allocator: 
 
     const old_height = result.height;
 
-    for (result.nodes.items) |*node| {
-        transformNodeForRankDir(node, old_height, rankdir);
-    }
+    var horizontal_geometry: ?HorizontalRankDirGeometry = null;
+    defer if (horizontal_geometry) |*geometry| geometry.deinit();
 
-    for (result.edges.items) |*edge| {
-        try transformEdgePathForRankDir(edge, old_height, rankdir, allocator);
+    if (rankdir == .lr or rankdir == .rl) {
+        horizontal_geometry = try buildHorizontalRankDirGeometry(result, rankdir, allocator);
+        const geometry = &horizontal_geometry.?;
 
-        const from = transformPointForRankDir(edge.from_x, edge.from_y, old_height, rankdir);
-        const to = transformPointForRankDir(edge.to_x, edge.to_y, old_height, rankdir);
-        const label = transformPointForRankDir(edge.label_x, edge.label_y, old_height, rankdir);
-        edge.from_x = from.x;
-        edge.from_y = from.y;
-        edge.to_x = to.x;
-        edge.to_y = to.y;
-        edge.label_x = label.x;
-        edge.label_y = label.y;
+        for (result.nodes.items) |*node| {
+            transformHorizontalNodeForRankDir(node, geometry);
+        }
+
+        for (result.edges.items) |*edge| {
+            try transformHorizontalEdgePathForRankDir(edge, geometry, allocator);
+
+            const from = geometry.point(edge.from_x, edge.from_y);
+            const to = geometry.point(edge.to_x, edge.to_y);
+            const label = geometry.point(edge.label_x, edge.label_y);
+            edge.from_x = from.x;
+            edge.from_y = from.y;
+            edge.to_x = to.x;
+            edge.to_y = to.y;
+            edge.label_x = label.x;
+            edge.label_y = label.y;
+        }
+    } else {
+        for (result.nodes.items) |*node| {
+            transformNodeForRankDir(node, old_height, rankdir);
+        }
+
+        for (result.edges.items) |*edge| {
+            try transformEdgePathForRankDir(edge, old_height, rankdir, allocator);
+
+            const from = transformPointForRankDir(edge.from_x, edge.from_y, old_height, rankdir);
+            const to = transformPointForRankDir(edge.to_x, edge.to_y, old_height, rankdir);
+            const label = transformPointForRankDir(edge.label_x, edge.label_y, old_height, rankdir);
+            edge.from_x = from.x;
+            edge.from_y = from.y;
+            edge.to_x = to.x;
+            edge.to_y = to.y;
+            edge.label_x = label.x;
+            edge.label_y = label.y;
+        }
     }
 
     applyRankDirEdgePorts(result, rankdir);
 
     for (result.subgraphs.items) |*sg| {
-        const rect = transformRectForRankDir(sg.x, sg.y, sg.width, sg.height, old_height, rankdir);
+        const rect = if (horizontal_geometry) |*geometry|
+            geometry.rect(sg.x, sg.y, sg.width, sg.height)
+        else
+            transformRectForRankDir(sg.x, sg.y, sg.width, sg.height, old_height, rankdir);
         sg.x = rect.x;
         sg.y = rect.y;
         sg.width = rect.width;
@@ -2433,6 +2669,281 @@ test "layout: rankdir bottom-to-top reverses y direction" {
     const a = result.nodeById(1).?;
     const b = result.nodeById(2).?;
     try std.testing.expect(a.center_y > b.center_y);
+}
+
+fn segmentsCross(a1: ir.LayoutEdge(usize), a2: ir.LayoutEdge(usize)) bool {
+    if (a1.from_id == a2.from_id or a1.from_id == a2.to_id or a1.to_id == a2.from_id or a1.to_id == a2.to_id) {
+        return false;
+    }
+
+    const ax1: isize = @intCast(a1.from_x);
+    const ay1: isize = @intCast(a1.from_y);
+    const ax2: isize = @intCast(a1.to_x);
+    const ay2: isize = @intCast(a1.to_y);
+    const bx1: isize = @intCast(a2.from_x);
+    const by1: isize = @intCast(a2.from_y);
+    const bx2: isize = @intCast(a2.to_x);
+    const by2: isize = @intCast(a2.to_y);
+
+    const o1 = (by1 - ay1) * (ax2 - ax1) - (bx1 - ax1) * (ay2 - ay1);
+    const o2 = (by2 - ay1) * (ax2 - ax1) - (bx2 - ax1) * (ay2 - ay1);
+    const o3 = (ay1 - by1) * (bx2 - bx1) - (ax1 - bx1) * (by2 - by1);
+    const o4 = (ay2 - by1) * (bx2 - bx1) - (ax2 - bx1) * (by2 - by1);
+
+    return (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0);
+}
+
+const TestSegment = struct {
+    edge_index: usize,
+    from_id: usize,
+    to_id: usize,
+    x1: usize,
+    y1: usize,
+    x2: usize,
+    y2: usize,
+};
+
+const TestSegmentCoords = struct {
+    x1: usize,
+    y1: usize,
+    x2: usize,
+    y2: usize,
+};
+
+fn edgeSegmentCount(edge: ir.LayoutEdge(usize)) usize {
+    return switch (edge.path) {
+        .direct, .spline => 1,
+        .corner => 2,
+        .side_channel => 3,
+        .multi_segment => |multi| multi.waypoints.items.len + 1,
+    };
+}
+
+fn edgeSegmentAt(edge: ir.LayoutEdge(usize), idx: usize) TestSegment {
+    const coords: TestSegmentCoords = switch (edge.path) {
+        .direct, .spline => .{ .x1 = edge.from_x, .y1 = edge.from_y, .x2 = edge.to_x, .y2 = edge.to_y },
+        .corner => |corner| switch (idx) {
+            0 => .{ .x1 = edge.from_x, .y1 = edge.from_y, .x2 = edge.from_x, .y2 = corner.horizontal_y },
+            else => .{ .x1 = edge.from_x, .y1 = corner.horizontal_y, .x2 = edge.to_x, .y2 = edge.to_y },
+        },
+        .side_channel => |side| switch (idx) {
+            0 => .{ .x1 = edge.from_x, .y1 = edge.from_y, .x2 = side.channel_x, .y2 = side.start_y },
+            1 => .{ .x1 = side.channel_x, .y1 = side.start_y, .x2 = side.channel_x, .y2 = side.end_y },
+            else => .{ .x1 = side.channel_x, .y1 = side.end_y, .x2 = edge.to_x, .y2 = edge.to_y },
+        },
+        .multi_segment => |multi| blk: {
+            if (idx == 0) {
+                if (multi.waypoints.items.len == 0) break :blk .{ .x1 = edge.from_x, .y1 = edge.from_y, .x2 = edge.to_x, .y2 = edge.to_y };
+                const wp = multi.waypoints.items[0];
+                break :blk .{ .x1 = edge.from_x, .y1 = edge.from_y, .x2 = wp.x, .y2 = wp.y };
+            }
+            if (idx >= multi.waypoints.items.len) {
+                const wp = multi.waypoints.items[multi.waypoints.items.len - 1];
+                break :blk .{ .x1 = wp.x, .y1 = wp.y, .x2 = edge.to_x, .y2 = edge.to_y };
+            }
+            const a = multi.waypoints.items[idx - 1];
+            const b = multi.waypoints.items[idx];
+            break :blk .{ .x1 = a.x, .y1 = a.y, .x2 = b.x, .y2 = b.y };
+        },
+    };
+
+    return .{
+        .edge_index = edge.edge_index,
+        .from_id = edge.from_id,
+        .to_id = edge.to_id,
+        .x1 = coords.x1,
+        .y1 = coords.y1,
+        .x2 = coords.x2,
+        .y2 = coords.y2,
+    };
+}
+
+fn testSegmentsCross(a: TestSegment, b: TestSegment) bool {
+    if (a.edge_index == b.edge_index) return false;
+    if (a.from_id == b.from_id or a.from_id == b.to_id or a.to_id == b.from_id or a.to_id == b.to_id) return false;
+    if ((a.x1 == a.x2 and a.y1 == a.y2) or (b.x1 == b.x2 and b.y1 == b.y2)) return false;
+
+    const ax1: isize = @intCast(a.x1);
+    const ay1: isize = @intCast(a.y1);
+    const ax2: isize = @intCast(a.x2);
+    const ay2: isize = @intCast(a.y2);
+    const bx1: isize = @intCast(b.x1);
+    const by1: isize = @intCast(b.y1);
+    const bx2: isize = @intCast(b.x2);
+    const by2: isize = @intCast(b.y2);
+
+    const o1 = (by1 - ay1) * (ax2 - ax1) - (bx1 - ax1) * (ay2 - ay1);
+    const o2 = (by2 - ay1) * (ax2 - ax1) - (bx2 - ax1) * (ay2 - ay1);
+    const o3 = (ay1 - by1) * (bx2 - bx1) - (ax1 - bx1) * (by2 - by1);
+    const o4 = (ay2 - by1) * (bx2 - bx1) - (ax2 - bx1) * (by2 - by1);
+
+    const endpoint_on_segment = struct {
+        fn check(px: isize, py: isize, x1: isize, y1: isize, x2: isize, y2: isize) bool {
+            const orient = (py - y1) * (x2 - x1) - (px - x1) * (y2 - y1);
+            if (orient != 0) return false;
+            return @min(x1, x2) <= px and px <= @max(x1, x2) and @min(y1, y2) <= py and py <= @max(y1, y2);
+        }
+    }.check;
+    if (endpoint_on_segment(ax1, ay1, bx1, by1, bx2, by2)) return false;
+    if (endpoint_on_segment(ax2, ay2, bx1, by1, bx2, by2)) return false;
+    if (endpoint_on_segment(bx1, by1, ax1, ay1, ax2, ay2)) return false;
+    if (endpoint_on_segment(bx2, by2, ax1, ay1, ax2, ay2)) return false;
+
+    if (o1 == 0 and o2 == 0 and o3 == 0 and o4 == 0) return false;
+    return (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0);
+}
+
+fn expectNoEdgeSegmentCrossings(result: *const LayoutIR(usize)) !void {
+    for (result.edges.items, 0..) |edge_a, i| {
+        const count_a = edgeSegmentCount(edge_a);
+        for (result.edges.items[(i + 1)..]) |edge_b| {
+            const count_b = edgeSegmentCount(edge_b);
+            for (0..count_a) |seg_a_idx| {
+                const seg_a = edgeSegmentAt(edge_a, seg_a_idx);
+                for (0..count_b) |seg_b_idx| {
+                    const seg_b = edgeSegmentAt(edge_b, seg_b_idx);
+                    try std.testing.expect(!testSegmentsCross(seg_a, seg_b));
+                }
+            }
+        }
+    }
+}
+
+test "layout: rankdir does not introduce crossings in rank demo" {
+    const allocator = std.testing.allocator;
+
+    var g = Graph.init(allocator);
+    defer g.deinit();
+
+    try g.addNode(1, "Start");
+    try g.addNode(2, "Parse");
+    try g.addNode(3, "Validate");
+    try g.addNode(4, "Price");
+    try g.addNode(5, "Inventory");
+    try g.addNode(6, "Quote");
+    try g.addNode(7, "Archive");
+    try g.addEdge(1, 2);
+    try g.addEdge(1, 3);
+    try g.addEdge(2, 4);
+    try g.addEdge(3, 5);
+    try g.addEdge(4, 6);
+    try g.addEdge(5, 6);
+    try g.addEdge(6, 7);
+
+    const ranks = [_]RankConstraint{
+        .{ .kind = .min, .node_ids = &.{1} },
+        .{ .kind = .same, .node_ids = &.{ 2, 3 } },
+        .{ .kind = .same, .node_ids = &.{ 4, 5 } },
+        .{ .kind = .sink, .node_ids = &.{7} },
+    };
+
+    const dirs = [_]RankDir{ .tb, .bt, .lr, .rl };
+    for (dirs) |dir| {
+        var result = try layout(&g, allocator, .{
+            .rank_constraints = &ranks,
+            .rankdir = dir,
+        });
+        defer result.deinit();
+
+        try expectNoEdgeSegmentCrossings(&result);
+    }
+}
+
+test "layout: rankdir left-to-right handles side-branch rank constraints without crossings" {
+    const allocator = std.testing.allocator;
+
+    var g = Graph.init(allocator);
+    defer g.deinit();
+
+    try g.addNode(1, "Request");
+    try g.addNode(2, "Auth");
+    try g.addNode(3, "Catalog");
+    try g.addNode(4, "Price");
+    try g.addNode(5, "Inventory");
+    try g.addNode(6, "Quote");
+    try g.addNode(7, "Audit");
+    try g.addNode(8, "Response");
+    try g.addNode(9, "Metrics");
+    try g.addNode(10, "Archive");
+    try g.addNode(11, "Risk");
+    try g.addEdge(1, 2);
+    try g.addEdge(1, 3);
+    try g.addEdge(2, 4);
+    try g.addEdge(3, 4);
+    try g.addEdge(3, 5);
+    try g.addEdge(4, 6);
+    try g.addEdge(5, 6);
+    try g.addEdge(6, 8);
+    try g.addEdge(2, 7);
+    try g.addEdge(8, 10);
+    try g.addEdge(11, 6);
+
+    const ranks = [_]RankConstraint{
+        .{ .kind = .min, .node_ids = &.{ 1, 9 } },
+        .{ .kind = .same, .node_ids = &.{ 6, 7 } },
+        .{ .kind = .same, .node_ids = &.{ 5, 11 } },
+        .{ .kind = .sink, .node_ids = &.{10} },
+    };
+
+    const dirs = [_]RankDir{ .tb, .bt, .lr, .rl };
+    for (dirs) |dir| {
+        var result = try layout(&g, allocator, .{
+            .rank_constraints = &ranks,
+            .rankdir = dir,
+        });
+        defer result.deinit();
+
+        const request = result.nodeById(1).?;
+        const auth = result.nodeById(2).?;
+        const price = result.nodeById(4).?;
+        const inventory = result.nodeById(5).?;
+        const quote = result.nodeById(6).?;
+        const audit = result.nodeById(7).?;
+        const response = result.nodeById(8).?;
+        const archive = result.nodeById(10).?;
+        const risk = result.nodeById(11).?;
+
+        switch (dir) {
+            .tb => {
+                try std.testing.expect(request.center_y < auth.center_y);
+                try std.testing.expect(auth.center_y < price.center_y);
+                try std.testing.expect(price.center_y < quote.center_y);
+                try std.testing.expect(quote.center_y < response.center_y);
+                try std.testing.expect(response.center_y < archive.center_y);
+                try std.testing.expectEqual(inventory.center_y, risk.center_y);
+                try std.testing.expectEqual(quote.center_y, audit.center_y);
+            },
+            .bt => {
+                try std.testing.expect(request.center_y > auth.center_y);
+                try std.testing.expect(auth.center_y > price.center_y);
+                try std.testing.expect(price.center_y > quote.center_y);
+                try std.testing.expect(quote.center_y > response.center_y);
+                try std.testing.expect(response.center_y > archive.center_y);
+                try std.testing.expectEqual(inventory.center_y, risk.center_y);
+                try std.testing.expectEqual(quote.center_y, audit.center_y);
+            },
+            .lr => {
+                try std.testing.expect(request.center_x < auth.center_x);
+                try std.testing.expect(auth.center_x < price.center_x);
+                try std.testing.expect(price.center_x < quote.center_x);
+                try std.testing.expect(quote.center_x < response.center_x);
+                try std.testing.expect(response.center_x < archive.center_x);
+                try std.testing.expectEqual(inventory.center_x, risk.center_x);
+                try std.testing.expectEqual(quote.center_x, audit.center_x);
+            },
+            .rl => {
+                try std.testing.expect(request.center_x > auth.center_x);
+                try std.testing.expect(auth.center_x > price.center_x);
+                try std.testing.expect(price.center_x > quote.center_x);
+                try std.testing.expect(quote.center_x > response.center_x);
+                try std.testing.expect(response.center_x > archive.center_x);
+                try std.testing.expectEqual(inventory.center_x, risk.center_x);
+                try std.testing.expectEqual(quote.center_x, audit.center_x);
+            },
+        }
+
+        try expectNoEdgeSegmentCrossings(&result);
+    }
 }
 
 test "layout: rank same keeps constrained nodes on one level" {

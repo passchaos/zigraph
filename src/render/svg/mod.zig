@@ -131,7 +131,7 @@ pub fn render(layout: *const LayoutIR, allocator: Allocator, config: SvgConfig) 
     @memset(computed, false);
 
     for (layout.edges.items) |edge| {
-        if (computed[edge.edge_index]) continue;
+        if (computed[edge.edge_index] and !edge.directed) continue;
         computed[edge.edge_index] = true;
 
         edge_styles[edge.edge_index] = config.edge_style_fn(.{
@@ -216,8 +216,8 @@ pub fn render(layout: *const LayoutIR, allocator: Allocator, config: SvgConfig) 
 
     try writer.print(
         \\<?xml version="1.0" encoding="UTF-8"?>
-        \\<svg xmlns="http://www.w3.org/2000/svg" 
-        \\     width="{d}" height="{d}" 
+        \\<svg xmlns="http://www.w3.org/2000/svg"
+        \\     width="{d}" height="{d}"
         \\     viewBox="0 0 {d} {d}">
         \\
         \\  <!-- Marker definitions -->

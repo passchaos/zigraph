@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="1010" height="540"
-     viewBox="0 0 1010 540">
+     width="1020" height="540"
+     viewBox="0 0 1020 540">
 
   <!-- Marker definitions -->
   <defs>
@@ -55,84 +55,84 @@
   <rect width="100%" height="100%" fill="white"/>
   <!-- Edges (rendered first, under nodes) -->
   <g id="edges">
-    <line x1="620" y1="250" x2="700" y2="230"
+    <line x1="380" y1="250" x2="290" y2="230"
           fill="none" stroke="#ffe629" stroke-width="2"
           data-type="edge" data-from="6" data-to="8" marker-end="url(#zg-m-7)"/>
-    <line x1="110" y1="230" x2="190" y2="310"
+    <line x1="890" y1="230" x2="810" y2="310"
           fill="none" stroke="#e54d2e" stroke-width="2"
           data-type="edge" data-from="1" data-to="3" marker-end="url(#zg-m-1)"/>
-    <line x1="110" y1="230" x2="200" y2="210"
+    <line x1="890" y1="230" x2="790" y2="210"
           fill="none" stroke="#3e63dd" stroke-width="2"
           data-type="edge" data-from="1" data-to="2" marker-end="url(#zg-m-0)"/>
-    <line x1="280" y1="310" x2="360" y2="350"
+    <line x1="720" y1="310" x2="640" y2="350"
           fill="none" stroke="#8e4ec6" stroke-width="2"
           data-type="edge" data-from="3" data-to="5" marker-end="url(#zg-m-4)"/>
-    <line x1="470" y1="350" x2="550" y2="250"
+    <line x1="530" y1="350" x2="450" y2="250"
           fill="none" stroke="#e93d82" stroke-width="2"
           data-type="edge" data-from="5" data-to="6" marker-end="url(#zg-m-6)"/>
-    <line x1="260" y1="210" x2="550" y2="70"
+    <line x1="730" y1="210" x2="450" y2="70"
           fill="none" stroke="#7ce2fe" stroke-width="2"
           data-type="edge" data-from="2" data-to="7" marker-end="url(#zg-m-8)"/>
-    <line x1="410" y1="460" x2="585" y2="260"
+    <line x1="580" y1="460" x2="415" y2="260"
           fill="none" stroke="#89ddff" stroke-width="2"
           data-type="edge" data-from="11" data-to="6" marker-end="url(#zg-m-10)"/>
-    <line x1="450" y1="230" x2="550" y2="250"
+    <line x1="550" y1="230" x2="450" y2="250"
           fill="none" stroke="#12a594" stroke-width="2"
           data-type="edge" data-from="4" data-to="6" marker-end="url(#zg-m-5)"/>
-    <line x1="800" y1="230" x2="880" y2="230"
+    <line x1="190" y1="230" x2="120" y2="230"
           fill="none" stroke="#f5d90a" stroke-width="2"
           data-type="edge" data-from="8" data-to="10" marker-end="url(#zg-m-9)"/>
-    <line x1="260" y1="210" x2="380" y2="230"
+    <line x1="730" y1="210" x2="620" y2="230"
           fill="none" stroke="#30a46c" stroke-width="2"
           data-type="edge" data-from="2" data-to="4" marker-end="url(#zg-m-2)"/>
-    <line x1="280" y1="310" x2="380" y2="230"
+    <line x1="720" y1="310" x2="620" y2="230"
           fill="none" stroke="#f76b15" stroke-width="2"
           data-type="edge" data-from="3" data-to="4" marker-end="url(#zg-m-3)"/>
   </g>
 
   <!-- Nodes -->
   <g id="nodes">
-    <g transform="translate(20,220)" fill="#dcfce7" stroke="#16a34a" data-type="node" data-id="1">
+    <g transform="translate(890,220)" fill="#dcfce7" stroke="#16a34a" data-type="node" data-id="1">
       <rect x="0" y="0" width="90" height="20" rx="4" ry="4"/>
 <text x="45" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Request</text>
     </g>
-    <g transform="translate(200,200)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="2">
+    <g transform="translate(730,200)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="2">
       <rect x="0" y="0" width="60" height="20" rx="4" ry="4"/>
 <text x="30" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Auth</text>
     </g>
-    <g transform="translate(190,300)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="3">
+    <g transform="translate(720,300)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="3">
       <rect x="0" y="0" width="90" height="20" rx="4" ry="4"/>
 <text x="45" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Catalog</text>
     </g>
-    <g transform="translate(380,220)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="4">
+    <g transform="translate(550,220)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="4">
       <rect x="0" y="0" width="70" height="20" rx="4" ry="4"/>
 <text x="35" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Price</text>
     </g>
-    <g transform="translate(360,340)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="5">
+    <g transform="translate(530,340)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="5">
       <rect x="0" y="0" width="110" height="20" rx="4" ry="4"/>
 <text x="55" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Inventory</text>
     </g>
-    <g transform="translate(550,240)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="6">
+    <g transform="translate(380,240)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="6">
       <rect x="0" y="0" width="70" height="20" rx="4" ry="4"/>
 <text x="35" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Quote</text>
     </g>
-    <g transform="translate(550,60)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="7">
+    <g transform="translate(380,60)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="7">
       <rect x="0" y="0" width="70" height="20" rx="4" ry="4"/>
 <text x="35" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Audit</text>
     </g>
-    <g transform="translate(700,220)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="8">
+    <g transform="translate(190,220)" fill="#f8fafc" stroke="#64748b" data-type="node" data-id="8">
       <rect x="0" y="0" width="100" height="20" rx="4" ry="4"/>
 <text x="50" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Response</text>
     </g>
-    <g transform="translate(20,340)" fill="#dcfce7" stroke="#16a34a" data-type="node" data-id="9">
+    <g transform="translate(890,340)" fill="#dcfce7" stroke="#16a34a" data-type="node" data-id="9">
       <rect x="0" y="0" width="90" height="20" rx="4" ry="4"/>
 <text x="45" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Metrics</text>
     </g>
-    <g transform="translate(880,220)" fill="#fee2e2" stroke="#dc2626" data-type="node" data-id="10">
+    <g transform="translate(30,220)" fill="#fee2e2" stroke="#dc2626" data-type="node" data-id="10">
       <rect x="0" y="0" width="90" height="20" rx="4" ry="4"/>
 <text x="45" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Archive</text>
     </g>
-    <g transform="translate(380,460)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="11">
+    <g transform="translate(550,460)" fill="#fef3c7" stroke="#d97706" data-type="node" data-id="11">
       <rect x="0" y="0" width="60" height="20" rx="4" ry="4"/>
 <text x="30" y="14" text-anchor="middle" font-family="monospace" font-size="12" fill="#333333" stroke="none">Risk</text>
     </g>

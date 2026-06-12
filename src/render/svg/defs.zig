@@ -40,7 +40,7 @@ pub fn writeMarkerDef(writer: anytype, id: usize, shape: MarkerShape, color: []c
         .none => {},
         .arrow, .filled_arrow => {
             try writer.print(
-                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}" 
+                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}"
                 \\            refX="{d}" refY="{d}" orient="auto" markerUnits="userSpaceOnUse">
                 \\      <polygon points="0 0, {d} {d}, 0 {d}" fill="{s}"/>
                 \\    </marker>
@@ -49,7 +49,7 @@ pub fn writeMarkerDef(writer: anytype, id: usize, shape: MarkerShape, color: []c
         },
         .open_arrow => {
             try writer.print(
-                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}" 
+                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}"
                 \\            refX="{d}" refY="{d}" orient="auto" markerUnits="userSpaceOnUse">
                 \\      <polygon points="0 0, {d} {d}, 0 {d}" fill="white" stroke="{s}" stroke-width="1"/>
                 \\    </marker>
@@ -58,7 +58,7 @@ pub fn writeMarkerDef(writer: anytype, id: usize, shape: MarkerShape, color: []c
         },
         .diamond => {
             try writer.print(
-                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}" 
+                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}"
                 \\            refX="{d}" refY="{d}" orient="auto" markerUnits="userSpaceOnUse">
                 \\      <polygon points="{d} 0, {d} {d}, {d} {d}, 0 {d}" fill="{s}"/>
                 \\    </marker>
@@ -67,7 +67,7 @@ pub fn writeMarkerDef(writer: anytype, id: usize, shape: MarkerShape, color: []c
         },
         .open_diamond => {
             try writer.print(
-                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}" 
+                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}"
                 \\            refX="{d}" refY="{d}" orient="auto" markerUnits="userSpaceOnUse">
                 \\      <polygon points="{d} 0, {d} {d}, {d} {d}, 0 {d}" fill="white" stroke="{s}" stroke-width="1"/>
                 \\    </marker>
@@ -76,7 +76,7 @@ pub fn writeMarkerDef(writer: anytype, id: usize, shape: MarkerShape, color: []c
         },
         .circle => {
             try writer.print(
-                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}" 
+                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}"
                 \\            refX="{d}" refY="{d}" orient="auto" markerUnits="userSpaceOnUse">
                 \\      <circle cx="{d}" cy="{d}" r="{d}" fill="{s}"/>
                 \\    </marker>
@@ -85,7 +85,7 @@ pub fn writeMarkerDef(writer: anytype, id: usize, shape: MarkerShape, color: []c
         },
         .open_circle => {
             try writer.print(
-                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}" 
+                \\    <marker id="zg-m-{d}" markerWidth="{d}" markerHeight="{d}"
                 \\            refX="{d}" refY="{d}" orient="auto" markerUnits="userSpaceOnUse">
                 \\      <circle cx="{d}" cy="{d}" r="{d}" fill="white" stroke="{s}" stroke-width="1"/>
                 \\    </marker>

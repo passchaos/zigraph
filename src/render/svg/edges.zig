@@ -62,7 +62,7 @@ fn renderEdgeInner(writer: anytype, edge: LayoutEdge, config: SvgConfig, style: 
         .direct => {
             // Simple straight line with optional arrow
             try writer.print(
-                \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}" 
+                \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}"
                 \\          stroke="{s}" stroke-width="{d}"{s}
             , .{
                 from_x,
@@ -87,7 +87,7 @@ fn renderEdgeInner(writer: anytype, edge: LayoutEdge, config: SvgConfig, style: 
                 const real_to_x = edge.to_x * config.char_width + config.padding;
                 const real_to_y = edge.to_y * config.line_height + config.padding;
                 try writer.print(
-                    \\    <path d="M {d} {d} L {d} {d} L {d} {d}" 
+                    \\    <path d="M {d} {d} L {d} {d} L {d} {d}"
                     \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
                 , .{
                     real_to_x,
@@ -102,7 +102,7 @@ fn renderEdgeInner(writer: anytype, edge: LayoutEdge, config: SvgConfig, style: 
                 });
             } else {
                 try writer.print(
-                    \\    <path d="M {d} {d} L {d} {d} L {d} {d}" 
+                    \\    <path d="M {d} {d} L {d} {d} L {d} {d}"
                     \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
                 , .{
                     from_x,
@@ -126,7 +126,7 @@ fn renderEdgeInner(writer: anytype, edge: LayoutEdge, config: SvgConfig, style: 
             const start_y = sc.start_y * config.line_height + config.padding;
             const end_y = sc.end_y * config.line_height + config.padding;
             try writer.print(
-                \\    <path d="M {d} {d} L {d} {d} L {d} {d} L {d} {d}" 
+                \\    <path d="M {d} {d} L {d} {d} L {d} {d} L {d} {d}"
                 \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
             , .{
                 from_x,
@@ -191,7 +191,7 @@ fn renderEdgeInner(writer: anytype, edge: LayoutEdge, config: SvgConfig, style: 
             const cp2_y = sp.cp2_y * config.line_height + config.padding;
 
             try writer.print(
-                \\    <path d="M {d} {d} C {d} {d}, {d} {d}, {d} {d}" 
+                \\    <path d="M {d} {d} C {d} {d}, {d} {d}, {d} {d}"
                 \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
             , .{
                 from_x,
@@ -215,7 +215,7 @@ fn renderEdgeInner(writer: anytype, edge: LayoutEdge, config: SvgConfig, style: 
                 // Control point 1 with handle line
                 try writer.print(
                     \\    <circle cx="{d}" cy="{d}" r="4" fill="{s}" opacity="0.7"/>
-                    \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}" 
+                    \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}"
                     \\          stroke="{s}" stroke-width="1" stroke-dasharray="4,2"/>
                     \\
                 , .{
@@ -232,7 +232,7 @@ fn renderEdgeInner(writer: anytype, edge: LayoutEdge, config: SvgConfig, style: 
                 // Control point 2 with handle line
                 try writer.print(
                     \\    <circle cx="{d}" cy="{d}" r="4" fill="{s}" opacity="0.7"/>
-                    \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}" 
+                    \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}"
                     \\          stroke="{s}" stroke-width="1" stroke-dasharray="4,2"/>
                     \\
                 , .{
@@ -332,52 +332,14 @@ pub fn renderSingleEdge(writer: anytype, from: Point, to: Point, edge_idx: usize
         try writeExtraAttrs(writer, style);
         try writer.writeAll("/>\n");
     } else {
-        // Check if the edge is nearly horizontal (same Y or very close)
-        // AND short enough that a straight line would overlap node borders.
-        // Long-distance same-level edges are fine as straight lines; the dome
-        // is only needed for nearby same-level nodes where the edge would be
-        // invisible against the node rectangles.
-        const fx: f64 = @floatFromInt(from_x);
-        const fy: f64 = @floatFromInt(from_y);
-        const tx: f64 = @floatFromInt(to_x);
-        const ty: f64 = @floatFromInt(to_y);
-        const dy = @abs(ty - fy);
-        const dx = @abs(tx - fx);
-        const is_horizontal = dy < 2.0 or (dx > 0 and dy / dx < 0.15);
-        // Cap: only dome for short nearby edges (≤ ~2-3 node widths apart)
-        const max_dome_dx: f64 = @floatFromInt(config.char_width * 24);
-
-        if (is_horizontal and dx > 10.0 and dx <= max_dome_dx) {
-            // Dome curve: arc above the nodes so the edge is clearly visible.
-            // Control points are offset upward by a fraction of the horizontal span.
-            const bulge = @max(dx * 0.35, 20.0);
-            // Control points: both above the line, creating a smooth dome
-            const cp_y = @min(fy, ty) - bulge;
-            try writer.print(
-                \\    <path d="M {d:.0} {d:.0} C {d:.0} {d:.0}, {d:.0} {d:.0}, {d:.0} {d:.0}"
-                \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
-            , .{ fx, fy, fx, cp_y, tx, cp_y, tx, ty, style.stroke, config.edge_width, dash });
-            try writeEdgeDataAttrs(writer, style.extra_attrs, from_id, to_id);
-            if (directed) try writeMarkerEndAttr(writer, style);
-            try writeExtraAttrs(writer, style);
-            try writer.writeAll("/>\n");
-        } else {
-            // Normal stitched edge: cubic bezier in the dominant direction.
-            const horizontal = dx >= dy;
-            const offset = @max((if (horizontal) dx else dy) * 0.45, 20.0);
-            const cp1_x = if (horizontal) fx + (if (tx >= fx) offset else -offset) else fx;
-            const cp1_y = if (horizontal) fy else fy + (if (ty >= fy) offset else -offset);
-            const cp2_x = if (horizontal) tx - (if (tx >= fx) offset else -offset) else tx;
-            const cp2_y = if (horizontal) ty else ty - (if (ty >= fy) offset else -offset);
-            try writer.print(
-                \\    <path d="M {d:.0} {d:.0} C {d:.0} {d:.0}, {d:.0} {d:.0}, {d:.0} {d:.0}"
-                \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
-            , .{ fx, fy, cp1_x, cp1_y, cp2_x, cp2_y, tx, ty, style.stroke, config.edge_width, dash });
-            try writeEdgeDataAttrs(writer, style.extra_attrs, from_id, to_id);
-            if (directed) try writeMarkerEndAttr(writer, style);
-            try writeExtraAttrs(writer, style);
-            try writer.writeAll("/>\n");
-        }
+        try writer.print(
+            \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}"
+            \\          stroke="{s}" stroke-width="{d}"{s}
+        , .{ from_x, from_y, to_x, to_y, style.stroke, config.edge_width, dash });
+        try writeEdgeDataAttrs(writer, style.extra_attrs, from_id, to_id);
+        if (directed) try writeMarkerEndAttr(writer, style);
+        try writeExtraAttrs(writer, style);
+        try writer.writeAll("/>\n");
     }
 
     // Emit hidden text path (always left-to-right for readable text)
@@ -496,7 +458,7 @@ pub fn renderBezierEdge(
 ) !void {
     // Cubic bezier curve: C p1x,p1y p2x,p2y x,y
     try writer.print(
-        \\    <path d="M {d} {d} C {d} {d}, {d} {d}, {d} {d}" 
+        \\    <path d="M {d} {d} C {d} {d}, {d} {d}, {d} {d}"
         \\          fill="none" stroke="{s}" stroke-width="{d}"
     , .{
         from_x,
@@ -519,7 +481,7 @@ pub fn renderBezierEdge(
         // Control point 1
         try writer.print(
             \\    <circle cx="{d}" cy="{d}" r="4" fill="{s}" opacity="0.7"/>
-            \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}" 
+            \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}"
             \\          stroke="{s}" stroke-width="1" stroke-dasharray="4,2"/>
             \\
         , .{
@@ -536,7 +498,7 @@ pub fn renderBezierEdge(
         // Control point 2
         try writer.print(
             \\    <circle cx="{d}" cy="{d}" r="4" fill="{s}" opacity="0.7"/>
-            \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}" 
+            \\    <line x1="{d}" y1="{d}" x2="{d}" y2="{d}"
             \\          stroke="{s}" stroke-width="1" stroke-dasharray="4,2"/>
             \\
         , .{

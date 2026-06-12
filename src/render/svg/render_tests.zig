@@ -87,8 +87,8 @@ test "svg: edge rendering" {
     const svg = try render(&layout, allocator, .{});
     defer allocator.free(svg);
 
-    // Stitched rendering emits even simple edges as path geometry.
-    try std.testing.expect(std.mem.indexOf(u8, svg, "<path") != null);
+    // Single-segment direct edges stay straight even when stitched rendering is enabled.
+    try std.testing.expect(std.mem.indexOf(u8, svg, "<line") != null);
 }
 
 test "svg: corner edge rendering" {

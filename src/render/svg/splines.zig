@@ -20,6 +20,13 @@ const helpers = @import("helpers.zig");
 
 const PixelPt = struct { x: f64, y: f64 };
 const PixelRect = struct { x: f64, y: f64, w: f64, h: f64 };
+const EdgeObstacle = struct {
+    edge_index: usize,
+    from_id: usize,
+    to_id: usize,
+    a: PixelPt,
+    b: PixelPt,
+};
 
 fn findNode(layout: *const LayoutIR, id: usize) ?ir_mod.LayoutNode(usize) {
     const idx = layout.id_to_index.get(id) orelse return null;
@@ -59,6 +66,150 @@ fn clipFromCenterToRankSide(center: PixelPt, toward: PixelPt, rect: PixelRect, e
         return .{ .x = center.x, .y = rect.y + rect.h + extra };
     }
     return .{ .x = center.x, .y = rect.y - extra };
+}
+
+fn pointInsideRect(p: PixelPt, rect: PixelRect) bool {
+    return p.x >= rect.x and p.x <= rect.x + rect.w and p.y >= rect.y and p.y <= rect.y + rect.h;
+}
+
+fn orientation(a: PixelPt, b: PixelPt, c: PixelPt) f64 {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+fn segmentsIntersect(a: PixelPt, b: PixelPt, c: PixelPt, d: PixelPt) bool {
+    const o1 = orientation(a, b, c);
+    const o2 = orientation(a, b, d);
+    const o3 = orientation(c, d, a);
+    const o4 = orientation(c, d, b);
+    return (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0);
+}
+
+fn lineIntersectsRect(a: PixelPt, b: PixelPt, rect: PixelRect) bool {
+    if (pointInsideRect(a, rect) or pointInsideRect(b, rect)) return true;
+
+    const tl = PixelPt{ .x = rect.x, .y = rect.y };
+    const tr = PixelPt{ .x = rect.x + rect.w, .y = rect.y };
+    const br = PixelPt{ .x = rect.x + rect.w, .y = rect.y + rect.h };
+    const bl = PixelPt{ .x = rect.x, .y = rect.y + rect.h };
+    return segmentsIntersect(a, b, tl, tr) or
+        segmentsIntersect(a, b, tr, br) or
+        segmentsIntersect(a, b, br, bl) or
+        segmentsIntersect(a, b, bl, tl);
+}
+
+fn samePoint(a: PixelPt, b: PixelPt) bool {
+    return @abs(a.x - b.x) < 0.001 and @abs(a.y - b.y) < 0.001;
+}
+
+fn lineCrossesEdgeObstacle(from: PixelPt, to: PixelPt, edge_index: usize, seg: EdgeObstacle) bool {
+    if (edge_index == seg.edge_index) return false;
+    if (samePoint(from, seg.a) or samePoint(from, seg.b) or samePoint(to, seg.a) or samePoint(to, seg.b)) {
+        return false;
+    }
+    return segmentsIntersect(from, to, seg.a, seg.b);
+}
+
+fn straightLineIsClear(from: PixelPt, to: PixelPt, layout: *const LayoutIR, config: SvgConfig, edge_index: usize, source_id: usize, target_id: usize, accepted_straights: []const EdgeObstacle) bool {
+    for (layout.nodes.items) |node| {
+        if (node.id == source_id or node.id == target_id) continue;
+        if (node.kind == .dummy) continue;
+
+        const rect = nodeRectPx(node, config);
+        if (lineIntersectsRect(from, to, rect)) return false;
+    }
+    for (accepted_straights) |seg| {
+        if (lineCrossesEdgeObstacle(from, to, edge_index, seg)) return false;
+    }
+    return true;
+}
+
+fn writeMarkerAttrs(writer: anytype, style: ResolvedEdgeStyle, directed: bool) !void {
+    if (!directed) return;
+    if (style.marker_end_id) |mid| {
+        try writer.print(" marker-end=\"url(#zg-m-{d})\"", .{mid});
+    }
+    if (style.marker_start_id) |mid| {
+        try writer.print(" marker-start=\"url(#zg-m-{d})\"", .{mid});
+    }
+}
+
+fn writeStyleExtraAttrs(writer: anytype, style: ResolvedEdgeStyle) !void {
+    if (style.extra_attrs) |attrs| {
+        try writer.print(" {s}", .{attrs});
+    }
+}
+
+fn renderStraightEdgePath(writer: anytype, from: PixelPt, to: PixelPt, style: ResolvedEdgeStyle, config: SvgConfig, directed: bool, reversed: bool, from_id: usize, to_id: usize) !void {
+    const dash: []const u8 = if (reversed) " stroke-dasharray=\"6,3\"" else "";
+    try writer.print(
+        \\    <line x1="{d:.0}" y1="{d:.0}" x2="{d:.0}" y2="{d:.0}"
+        \\          fill="none" stroke="{s}" stroke-width="{d}"{s}
+        \\          data-type="edge" data-from="{d}" data-to="{d}"
+    , .{ from.x, from.y, to.x, to.y, style.stroke, config.edge_width, dash, from_id, to_id });
+    try writeMarkerAttrs(writer, style, directed);
+    try writeStyleExtraAttrs(writer, style);
+    try writer.writeAll("/>\n");
+}
+
+fn appendAcceptedStraight(accepted_straights: *std.ArrayListUnmanaged(EdgeObstacle), allocator: Allocator, edge_index: usize, from_id: usize, to_id: usize, from: PixelPt, to: PixelPt) !void {
+    if (samePoint(from, to)) return;
+    try accepted_straights.append(allocator, .{
+        .edge_index = edge_index,
+        .from_id = from_id,
+        .to_id = to_id,
+        .a = from,
+        .b = to,
+    });
+}
+
+fn renderStraightOrSplinePath(writer: anytype, points: []const Point, layout: *const LayoutIR, allocator: Allocator, config: SvgConfig, style: ResolvedEdgeStyle, directed: bool, reversed: bool, edge_index: usize, from_id: usize, to_id: usize, accepted_straights: *std.ArrayListUnmanaged(EdgeObstacle)) !void {
+    if (points.len < 2) return;
+
+    var first = PixelPt{
+        .x = @floatFromInt(points[0].x * config.char_width + config.padding),
+        .y = @floatFromInt(points[0].y * config.line_height + config.padding),
+    };
+    var last = PixelPt{
+        .x = @floatFromInt(points[points.len - 1].x * config.char_width + config.padding),
+        .y = @floatFromInt(points[points.len - 1].y * config.line_height + config.padding),
+    };
+
+    if (findNode(layout, from_id)) |node| {
+        const rect = nodeRectPx(node, config);
+        first = clipFromCenterToRankSide(rectCenter(rect), last, rect, 0.0);
+    }
+    if (findNode(layout, to_id)) |node| {
+        const rect = nodeRectPx(node, config);
+        last = clipFromCenterToRankSide(rectCenter(rect), first, rect, 0.0);
+    }
+
+    if (straightLineIsClear(first, last, layout, config, edge_index, from_id, to_id, accepted_straights.items)) {
+        try renderStraightEdgePath(writer, first, last, style, config, directed, reversed, from_id, to_id);
+        try appendAcceptedStraight(accepted_straights, allocator, edge_index, from_id, to_id, first, last);
+        return;
+    }
+
+    try renderSplinePath(writer, points, edge_index, allocator, config, style, false, directed, reversed, from_id, to_id, findNode(layout, from_id), findNode(layout, to_id));
+}
+
+fn appendLayoutEdgePoints(points: *std.ArrayListUnmanaged(Point), allocator: Allocator, edge: LayoutEdge) !void {
+    try points.append(allocator, .{ .x = edge.from_x, .y = edge.from_y });
+    switch (edge.path) {
+        .direct, .spline => {},
+        .corner => |corner| {
+            try points.append(allocator, .{ .x = edge.from_x, .y = corner.horizontal_y });
+        },
+        .side_channel => |side| {
+            try points.append(allocator, .{ .x = side.channel_x, .y = side.start_y });
+            try points.append(allocator, .{ .x = side.channel_x, .y = side.end_y });
+        },
+        .multi_segment => |multi| {
+            for (multi.waypoints.items) |wp| {
+                try points.append(allocator, .{ .x = wp.x, .y = wp.y });
+            }
+        },
+    }
+    try points.append(allocator, .{ .x = edge.to_x, .y = edge.to_y });
 }
 
 fn renderSingleSplineEdge(
@@ -155,6 +306,9 @@ pub fn renderStitchedEdges(writer: anytype, layout: *const LayoutIR, allocator: 
         try gop.value_ptr.append(allocator, edge);
     }
 
+    var accepted_straights: std.ArrayListUnmanaged(EdgeObstacle) = .empty;
+    defer accepted_straights.deinit(allocator);
+
     // Iterate over each group (order of iteration does not affect correctness)
     var group_it = groups.iterator();
     while (group_it.next()) |entry| {
@@ -247,8 +401,6 @@ pub fn renderStitchedEdges(writer: anytype, layout: *const LayoutIR, allocator: 
                 break;
             }
         }
-        const has_label = edge_label != null;
-
         // Check if any segment is marked as reversed (back edge)
         var is_reversed = false;
         for (segments.items) |seg| {
@@ -273,8 +425,13 @@ pub fn renderStitchedEdges(writer: anytype, layout: *const LayoutIR, allocator: 
 
         if (segments.items.len == 1 and segments.items[0].path == .spline) {
             try renderSingleSplineEdge(writer, segments.items[0], edge_idx, config, style, is_directed, is_reversed, source_node, target_node);
+        } else if (segments.items.len == 1) {
+            var single_points: std.ArrayListUnmanaged(Point) = .empty;
+            defer single_points.deinit(allocator);
+            try appendLayoutEdgePoints(&single_points, allocator, segments.items[0]);
+            try renderStraightOrSplinePath(writer, single_points.items, layout, allocator, config, style, is_directed, is_reversed, edge_idx, first_seg.from_id, last_seg.to_id, &accepted_straights);
         } else {
-            try renderSplinePath(writer, points.items, edge_idx, allocator, config, style, has_label, is_directed, is_reversed, first_seg.from_id, last_seg.to_id, source_node, target_node);
+            try renderStraightOrSplinePath(writer, points.items, layout, allocator, config, style, is_directed, is_reversed, edge_idx, first_seg.from_id, last_seg.to_id, &accepted_straights);
         }
 
         // Render edge label (if any segment carries one)

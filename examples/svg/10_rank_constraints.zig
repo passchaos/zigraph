@@ -67,13 +67,13 @@ pub fn main(init: std.process.Init) !void {
     try g.addNode(2, "Auth");
     try g.addNode(3, "Catalog");
     try g.addNode(4, "Price");
-    try g.addNode(11, "Risk");
     try g.addNode(5, "Inventory");
     try g.addNode(6, "Quote");
     try g.addNode(7, "Audit");
     try g.addNode(8, "Response");
     try g.addNode(9, "Metrics");
     try g.addNode(10, "Archive");
+    try g.addNode(11, "Risk");
 
     try g.addEdge(1, 2);
     try g.addEdge(1, 3);
@@ -94,15 +94,12 @@ pub fn main(init: std.process.Init) !void {
         .{ .kind = .sink, .node_ids = &.{10} },
     };
 
-    // Rank hints are layout configuration: Metrics stays near the source,
-    // Audit is pulled down to Quote's level, Risk aligns with Inventory, and
-    // Archive sinks to the bottom.
+    // The LR image should read like the TB image with the rank axis rotated.
     const layout_config = zigraph.LayoutConfig{
         .layering = .network_simplex_fast,
         .positioning = .brandes_kopf,
-        .routing = .spline,
+        .routing = .direct,
         .rank_constraints = &ranks,
-        .level_spacing = 8,
     };
 
     var ir_tb = try zigraph.layout(&g, allocator, layout_config);
@@ -118,6 +115,26 @@ pub fn main(init: std.process.Init) !void {
     });
     defer ir_lr.deinit();
 
+    var ir_bt = try zigraph.layout(&g, allocator, .{
+        .layering = layout_config.layering,
+        .positioning = layout_config.positioning,
+        .routing = layout_config.routing,
+        .rank_constraints = layout_config.rank_constraints,
+        .level_spacing = layout_config.level_spacing,
+        .rankdir = .bt,
+    });
+    defer ir_bt.deinit();
+
+    var ir_rl = try zigraph.layout(&g, allocator, .{
+        .layering = layout_config.layering,
+        .positioning = layout_config.positioning,
+        .routing = layout_config.routing,
+        .rank_constraints = layout_config.rank_constraints,
+        .level_spacing = layout_config.level_spacing,
+        .rankdir = .rl,
+    });
+    defer ir_rl.deinit();
+
     const svg_tb = try zigraph.svg.render(&ir_tb, allocator, .{
         .node_style_fn = &nodeStyle,
         .edge_style_fn = &edgeStyle,
@@ -131,4 +148,18 @@ pub fn main(init: std.process.Init) !void {
     });
     defer allocator.free(svg_lr);
     try writeSvg(io, "10_rank_constraints", svg_lr);
+
+    const svg_bt = try zigraph.svg.render(&ir_bt, allocator, .{
+        .node_style_fn = &nodeStyle,
+        .edge_style_fn = &edgeStyle,
+    });
+    defer allocator.free(svg_bt);
+    try writeSvg(io, "10_rank_constraints_bt", svg_bt);
+
+    const svg_rl = try zigraph.svg.render(&ir_rl, allocator, .{
+        .node_style_fn = &nodeStyle,
+        .edge_style_fn = &edgeStyle,
+    });
+    defer allocator.free(svg_rl);
+    try writeSvg(io, "10_rank_constraints_rl", svg_rl);
 }
